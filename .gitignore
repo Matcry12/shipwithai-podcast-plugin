@@ -1,0 +1,24 @@
+# Local secrets: render server URL/token, R2 credentials, voice clip paths.
+# Only .env.example is committed.
+.env
+.env.local
+.env.bak
+
+# Per-run artifacts. Episodes are large and machine-specific; the published URL
+# lives in the blog post's frontmatter, which is the durable record.
+podcasts/
+podcast-reports/
+
+# State files written by the listeners.
+.podcast-listener.sha
+.demo-podcast.sha
+
+# Local plugin wiring (symlinks + machine-specific settings).
+.claude/settings.local.json
+
+__pycache__/
+*.pyc
+.DS_Store
+
+# OMC session state
+.omc/

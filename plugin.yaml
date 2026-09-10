@@ -1,0 +1,57 @@
+name: shipwithai-podcast
+version: 0.1.0
+description: |
+  Turns a reviewed blog draft into a published podcast episode: rewrite for the ear,
+  render through a TTS server (single narrator or two-host dialogue), gate on an
+  independent critic, publish to Spotify for Creators, and write the episode link
+  back into the post's frontmatter. Runs by hand or unattended on a self-hosted
+  GitHub Actions runner. Split out of shipwithai-content-agent-plugin, which owns
+  the blog-writing spine and still produces the drafts this consumes.
+author: Ethan Nguyen
+homepage: https://shipwithai.io
+license: UNLICENSED
+status: alpha
+
+agents:
+  - path: agents/podcast-critic.md
+    kind: orchestration
+
+commands:
+  - path: commands/content-podcast.md
+  - path: commands/content-podcast-review.md
+  - path: commands/content-podcast-posting.md
+  - path: commands/content-podcast-all.md
+
+skills:
+  - path: skills/content-podcast
+  - path: skills/content-podcast-review
+  - path: skills/content-podcast-posting
+  - path: skills/content-podcast-all
+
+# ---- Inputs this plugin does not own ----
+#
+# drafts/<slug>--<locale>.md is written by shipwithai-content-agent-plugin and
+# gitignored there, so it reaches this repo by neither git nor clone. Every entry
+# point takes DRAFTS_DIR; the default assumes both repos are checked out side by
+# side under ~/Developer.
+inputs:
+  drafts:
+    env: DRAFTS_DIR
+    default: ~/Developer/shipwithai-content-agent-plugin/drafts
+    note: produced by /content-write + /content-review + /content-seo in that plugin
+
+# ---- External services ----
+requires:
+  render_server:
+    env: [PODCAST_URL, PODCAST_TOKEN]
+    note: TTS server; must be reachable from wherever the pipeline runs
+  spotify:
+    note: |
+      Spotify for Creators has no publishing API. The posting stage drives a real
+      logged-in browser via browser-harness, which is why unattended runs need a
+      self-hosted runner rather than a cloud one.
+  voices:
+    env: [PODCAST_EN_VOICE, PODCAST_EN_VOICE_2, PODCAST_VI_VOICE, PODCAST_VI_VOICE_2]
+    note: |
+      Reference .wav clips for omnivoice cloning, stored outside this repo. Absent,
+      EN silently falls back to kokoro presets and stops sounding like the show.
