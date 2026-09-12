@@ -82,55 +82,55 @@ publishing. (Scheduling is what previously stalled the flow on the Review screen
    - **Description** — the episode description (includes a link back to the
      article on the site).
 
-   **Neutralise Grammarly before touching the description.** The description is
-   a Slate-style rich-text editor: it keeps its content in its own model, not the
-   DOM. Grammarly injects into the same `contenteditable` and swallows synthetic
-   input, so the DOM shows your text while the editor's model stays empty — the
-   field paints a red border and **Next** refuses to advance. Observed 2026-09-12:
-   thirteen minutes of clear-and-retype with no exit, because the old guidance here
-   said "delete and re-insert" and nothing else. Opt the field out first:
+   **The description is a Slate-style rich-text editor.** It keeps its content
+   in its own model, not the DOM. Synthetic input — `execCommand('insertText')`,
+   `type_text()`, setting `innerText` — updates what you *see* but not what the
+   editor *has*: the character counter stays at `0 / 4000`, the field paints a
+   red border, and **Next** refuses to advance. This was wrongly blamed on
+   Grammarly at first; verified 2026-09-13 with zero Grammarly nodes on the page,
+   `execCommand` still gave `0 / 4000`.
+
+   **Insert with CDP `Input.insertText`, both fields, both locales.** It is a
+   trusted, browser-level text insertion — the same path an IME uses — so the
+   editor cannot tell it from typing, and it preserves Vietnamese diacritics and
+   em-dashes verbatim (`type_text()` strips non-ASCII: "Đã đến lúc" → "Da den
+   luc"). Verified on the live field: `0 / 4000` → `34 / 4000` for
+   *"Kiểm tra: Đã đến lúc — thử nghiệm."*, exact text in the model.
 
    ```python
-   js("""
-   const el = document.querySelector('[contenteditable="true"]');
-   el.setAttribute('data-gramm', 'false');
-   el.setAttribute('data-gramm_editor', 'false');
-   el.setAttribute('data-enable-grammarly', 'false');
-   document.querySelectorAll('grammarly-extension, grammarly-desktop-integration').forEach(n => n.remove());
-   """)
+   import time
+   # Title (plain input — id="title-input"): click it, clear, insert.
+   box = js("(function(){const r=document.getElementById('title-input').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()")
+   click_at_xy(box[0], box[1]); time.sleep(0.3)
+   js("document.execCommand('selectAll')"); js("document.execCommand('delete')")
+   cdp("Input.insertText", text=TITLE)
+
+   # Description (contenteditable): click INTO the box so the editor owns focus
+   # and the caret, clear, then insert. Do not .focus() from JS -- a click is
+   # what makes Slate treat the caret as live.
+   box = js("(function(){const r=document.querySelector('[contenteditable=\"true\"]').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()")
+   click_at_xy(box[0], box[1]); time.sleep(0.4)
+   js("document.execCommand('selectAll')"); js("document.execCommand('delete')")
+   cdp("Input.insertText", text=DESCRIPTION)
+   time.sleep(0.8)
    ```
 
-   **Insert text with `execCommand`, both locales.** It fires the `beforeinput`
-   events Slate listens to, and it preserves Vietnamese diacritics — `type_text()`
-   strips non-ASCII ("Đã đến lúc" becomes "Da den luc"), so never use it for VI.
+   `cdp()` takes params as keyword arguments (`text=...`), not a dict — a dict
+   as the second positional argument is taken as a session id and errors.
 
-   ```python
-   # Title (plain input — id="title-input")
-   js("document.getElementById('title-input').focus()")
-   js("document.execCommand('selectAll')")
-   js("document.execCommand('insertText', false, 'TITLE')")
+   **Verify by the counter, then by advancing.** Read the description counter:
+   `js("(document.body.innerText.match(/\\d+\\s*\\/\\s*4000/)||['?'])[0]")`.
+   Non-zero and roughly the description's length means the model has it.
+   Screenshot both fields. Then click **Next**; the wizard must advance to
+   **Review**. Do **not** clear and retype in a loop. If the counter is still
+   `0 / 4000` or Next does not advance:
 
-   # Description (contenteditable). Clear, insert, blur.
-   js("document.querySelector('[contenteditable=\"true\"]').focus()")
-   js("document.execCommand('selectAll')")
-   js("document.execCommand('delete')")
-   js("document.execCommand('insertText', false, 'DESCRIPTION')")
-   js("document.querySelector('[contenteditable=\"true\"]').blur()")
-   ```
-
-   **Verify by advancing, not by reading the DOM.** Screenshot both fields (title
-   shows a character count, description shows text). A red border on the
-   description means the model is empty regardless of what the DOM shows. Do
-   **not** clear and retype in a loop — that is the failure mode this section
-   exists to prevent. Instead:
-
-   1. Re-run the Grammarly opt-out (an extension can re-inject after a
-      re-render), then re-insert the description **once**.
-   2. Click **Next**. If the wizard advances to **Review**, the model accepted the
-      text — continue.
-   3. If it has not advanced after **two** attempts total, screenshot the field,
+   1. Reload the draft wizard URL (the SPA sometimes renders a blank content
+      area after a burst of synthetic events), wait for the `contenteditable`
+      to reappear, and repeat the insert **once**.
+   2. If it has not advanced after **two** attempts total, screenshot the field,
       leave the episode as a draft, and print:
-      `STOP: description editor rejected input after 2 attempts (Grammarly or similar likely active)`.
+      `STOP: description editor rejected input after 2 attempts`.
       Never a third attempt.
 5. **Advance to Review and set Publish date = *Now*.** Move to the **Review** step and
    confirm the **Publish date** radio is on ***Now***; if it shows *Schedule* (or any future
