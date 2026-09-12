@@ -16,7 +16,7 @@ ids are not stable — re-discover the tab by URL substring each time, not by a 
 
 ## Preconditions (the calling skill checks these first)
 - `podcasts/<slug>--<locale>.mp3` exists and review returned `ship` / `ship-after-fix`.
-- A browser capability is available. If none, STOP — this backend cannot run.
+- A browser capability is available. If none, print `STOP: no browser capability available` — this backend cannot run.
 - The Spotify *show* already exists (one-time human setup; not automated here).
 
 ## Site map (durable shapes — verify on screen, don't hardcode coordinates)
@@ -49,16 +49,34 @@ publishing. (Scheduling is what previously stalled the flow on the Review screen
    - **Auth wall / login / 2FA / captcha → STOP and hand control to the human.**
      Never type credentials read from a screen. With browser-harness driving the
      operator's own Chrome you are usually already logged in; Cowork starts clean
-     and will hit this gate.
-2. **Start a new episode** (the dashboard's "New episode" / "Create" entry).
-   Screenshot to confirm the episode editor opened.
+     and will hit this gate. Print exactly one of:
+     `STOP: spotify auth wall` (login page shown) ·
+     `STOP: spotify 2FA required` ·
+     `STOP: spotify captcha` — then stop.
+2. **Check for an existing episode before creating a new one (idempotence).**
+   A re-run after a partial success — episode created as a draft on Spotify,
+   but the run ended before the stub was written — must not create a second
+   episode: a duplicate on a public feed cannot be recalled. Before clicking
+   "New episode," scan the dashboard's episode list for one whose title
+   exactly matches the title this run is about to publish (exact match only —
+   fuzzy matching risks a false positive against an unrelated episode that
+   happens to share topic words).
+   - **Found, still a draft:** open it and resume from wherever it left off —
+     do not re-upload the mp3 if the preview player already shows it; jump to
+     whichever step (Details, Review) is incomplete.
+   - **Found, already published:** it already went out — do not publish it
+     again. Skip straight to step 8 to capture its
+     `open.spotify.com/episode/<id>` link and write the stub from that; the
+     rest of this flow (upload, details, publish) does not run.
+   - **Not found:** proceed — click "New episode" / "Create" and screenshot to
+     confirm the episode editor opened.
 3. **Upload audio:** the upload area has a hidden file `<input>` (observed id
    `#uploadAreaInput`, accepting `.mp3,.m4a,.wav,.flac,.ogg,.aiff,.mp4,.mov`). Set the file
    **directly on that input** (most browser tools expose a set-input-files / upload helper) rather
    than clicking "Select a file" and fighting the OS file dialog. The wizard auto-advances to
    **Details** and the URL gains the draft episode id. Wait for processing to finish (screenshot
-   until the preview player / duration appears, e.g. "Preview ready"). If processing errors, STOP
-   and report verbatim.
+   until the preview player / duration appears, e.g. "Preview ready"). If processing errors, print
+   `STOP: spotify upload/processing error — <verbatim message>` and stop.
 4. **Fill details** from the values the calling skill passes in:
    - **Title** — the episode title.
    - **Description** — the episode description (includes a link back to the
@@ -110,23 +128,32 @@ publishing. (Scheduling is what previously stalled the flow on the Review screen
       re-render), then re-insert the description **once**.
    2. Click **Next**. If the wizard advances to **Review**, the model accepted the
       text — continue.
-   3. If it has not advanced after **two** attempts total, **STOP**. Screenshot the
-      field, leave the episode as a draft, and report: "description editor rejected
-      input — Grammarly or another extension is likely active in this Chrome;
-      disable it for creators.spotify.com and re-run". Never a third attempt.
+   3. If it has not advanced after **two** attempts total, screenshot the field,
+      leave the episode as a draft, and print:
+      `STOP: description editor rejected input after 2 attempts (Grammarly or similar likely active)`.
+      Never a third attempt.
 5. **Advance to Review and set Publish date = *Now*.** Move to the **Review** step and
    confirm the **Publish date** radio is on ***Now***; if it shows *Schedule* (or any future
    date), click ***Now*** so the episode publishes immediately. Never schedule. Screenshot to
-   confirm *Now* is selected before the gate.
+   confirm *Now* is selected before the gate. Title and description carry over
+   automatically from step 4 — this step never needs them re-typed; if either
+   looks wrong here, go back and re-verify step 4 rather than retyping on this
+   screen.
 6. **CONFIRM-BEFORE-PUBLISH GATE:** screenshot the filled episode (with *Now*
    selected) and ask the human to approve. Do **not** click Publish without an
-   explicit yes. If they decline, leave it as a draft and report that.
+   explicit yes. If they decline, leave it as a draft and print
+   `STOP: human declined publish — left as draft`.
 
    **Exception — `--yes-publish`:** when the caller passed `--yes-publish`, the
-   human authorized this run in advance. Still take the screenshot (it is the
-   audit trail of what went out), then proceed to step 7 without asking. This is
-   the only gate `--yes-publish` removes; the auth/2FA/captcha stop in step 3 and
-   the verify-never-invent rule in step 8 are unaffected.
+   human authorized this run in advance, on the strength of the critic's `ship`
+   verdict alone (see SKILL.md's precedence rule). Still take the screenshot (it
+   is the audit trail of what went out), then proceed to step 7 without asking.
+   Do not open `podcast-reports/<slug>--<locale>.md` and do not delay for an
+   advisory note in it — a genuine content problem shows up as a `fix` or
+   `regenerate` verdict, not a caveat riding on a `ship`. This is the only gate
+   `--yes-publish` removes: the auth/2FA/captcha stop in step 1, the
+   upload/processing stop in step 3, the description two-attempt stop in step 4,
+   and the verify-never-invent rule in step 8 are all unaffected.
 7. **Publish now** once approved — click the Publish button (which publishes immediately because
    *Now* is selected). Screenshot to confirm the success state.
 8. **Capture the embed link (verify, never invent):**
@@ -139,8 +166,12 @@ publishing. (Scheduling is what previously stalled the flow on the Review screen
      (`open.spotify.com/episode/<id>`) can return "couldn't find that podcast" for a few minutes;
      the **embed iframe** usually propagates faster. An initial 404 is NOT a failure — re-check,
      and confirm via the Share control (which is authoritative immediately).
-   - If after polling the link still cannot be confirmed, FALL BACK: report "published — paste the
-     episode URL once it appears on Spotify" and let the human supply it. Never invent an id.
+   - If after polling the link still cannot be confirmed, this is not a publish failure — the
+     episode already went out; only the link capture is incomplete. Print
+     `STOP: episode published but embed link unconfirmed — paste the episode URL once it appears`.
+     Never invent an id. In an unattended run nobody reads this live, so the recovery is manual and
+     asynchronous: once the URL is confirmable, write the stub by hand with
+     `python3 ${CLAUDE_PLUGIN_ROOT:-.}/scripts/podcast_stub.py podcasts/<slug>--<locale>.podcast.json --type spotify --url "<url>"`.
 9. **Return** the captured episode URL to the calling skill.
 
 ## Out of scope

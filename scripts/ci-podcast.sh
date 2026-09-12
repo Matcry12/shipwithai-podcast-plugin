@@ -20,6 +20,13 @@ SITE="${SITE_REPO:?SITE_REPO not set}"
 # lives here.
 PODCAST="${PODCAST_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 
+# Sourced here, before anything below resolves a *_DIR/*_MODE/*_MAX/*_ENGINE
+# default -- bash fills in a ${VAR:-default} at the point of assignment, so
+# sourcing .env any later would silently discard whatever it sets for those
+# vars (only vars read directly at point-of-use, like PODCAST_URL/TOKEN
+# below, would still pick it up).
+set -a; . "$PODCAST/.env" 2>/dev/null; set +a
+
 # Drafts are written by the CONTENT plugin, not this one, and are gitignored
 # there -- so they arrive by neither git nor this repo. Point DRAFTS_DIR at
 # whatever directory holds them on this machine.
@@ -47,8 +54,6 @@ ENGINE="${PODCAST_ENGINE:-}"
 # script was clean at 34/35 and only the audio tail needed re-rendering, but the
 # loop had already spent both cycles.
 CYCLES="${PODCAST_MAX_CYCLES:-3}"
-
-set -a; . "$PODCAST/.env" 2>/dev/null; set +a
 
 # claude -p ends the session the moment the agent returns, so anything it pushed
 # to the background is simply lost. Observed twice: the render stage submitted
@@ -222,6 +227,22 @@ reintroduced." ;;
     echo "HALTED by critic after $CYCLES cycle(s) -- nothing published"
     echo "See podcast-reports/$id.critic.yaml; this one needs a human."
     failed=1; echo "::endgroup::"; continue; }
+
+  # GitHub can mark this run "completed" (timeout/lost heartbeat) while a
+  # network blip leaves the runner itself still executing -- the render+review
+  # cycles above are the likeliest place to lose minutes of connectivity. A
+  # human seeing that red run would rerun the push, which would publish a
+  # second episode for the same post. Cheap re-check right before the
+  # irreversible step; does not fix the network loss itself, and no-ops (same
+  # as before this check existed) when gh is missing/unauthenticated or this
+  # is a local, non-Actions run.
+  if [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && command -v gh >/dev/null; then
+    run_status="$(gh run view "$GITHUB_RUN_ID" -R "$GITHUB_REPOSITORY" --json status -q .status 2>/dev/null)"
+    if [ "$run_status" = "completed" ]; then
+      echo "ABORT: GitHub already marked this run completed (network loss?) while it kept running here -- refusing to publish, a rerun would risk a duplicate episode"
+      failed=1; echo "::endgroup::"; continue
+    fi
+  fi
 
   echo "[3/4] publish to spotify (no confirm)"
   run "/content-podcast-posting $id --backend spotify-cowork --yes-publish" \

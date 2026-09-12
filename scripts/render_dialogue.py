@@ -50,6 +50,66 @@ except ImportError:
 
 SPEAKERS = ("host", "cohost")
 
+# Dropped-words guard. OmniVoice is non-autoregressive: it fixes the output
+# frame budget up front from a text-weight × reference-clip-rate estimate, then
+# has to fit every word into it. When the cloned voice's real pace is slower
+# than that budget the model doesn't slow down, it silently omits clauses —
+# deterministically, so a plain re-render reproduces the same hole (observed
+# 2026-09-12: turns 1/5/15/29 of think-plan-execute-pattern--vi lost the same
+# clauses across three re-renders; the render itself ran at 0.18–0.21 s/word).
+# The one client-reachable knob that enlarges the budget is `speed` (budget ∝
+# 1/speed), so a retry slows the turn down rather than rolling the dice again.
+# Floor calibrated on VI omnivoice: turns with drops measured 0.18–0.21 s/word,
+# intact ones ≥ 0.23. EN speech is slower per word, so the same floor holds.
+# ponytail: one floor for both locales; split per locale if EN ever trips it.
+MIN_SEC_PER_WORD = 0.23
+RETRY_SLOWDOWN = 0.85
+MAX_RETRIES = 2
+
+
+def _probe_duration(path: Path) -> float:
+    """Seconds of audio in *path*, via ffprobe."""
+    return float(subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "csv=p=0", str(path)],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip())
+
+
+def render_turn_guarded(
+    url: str, token: str, seg_script: Path, seg_mp3: Path, *,
+    backend: str, voice_kwargs: dict, line: str, turn_no: int, verbose: bool = True,
+) -> None:
+    """Render one turn, re-rendering slower while its audio is too short for its words.
+
+    Raises PodcastClientError after MAX_RETRIES if the turn is still short, so a
+    dropped clause fails the render instead of surfacing three review cycles
+    later. `dummy` is a silent placeholder with no speech to measure — skipped.
+    """
+    kw = dict(voice_kwargs)
+    n_words = len(line.split())
+    floor = n_words * MIN_SEC_PER_WORD
+    for attempt in range(MAX_RETRIES + 1):
+        render(url, token, seg_script, seg_mp3, backend=backend, verbose=False, **kw)
+        if backend == "dummy":
+            return
+        dur = _probe_duration(seg_mp3)
+        if verbose:
+            print(f"[dialogue]   turn {turn_no}: {dur:.1f}s / {n_words} words = {dur / n_words:.2f} s/word")
+        if dur >= floor:
+            return
+        opts = dict(kw.get("backend_opts") or {})
+        opts["speed"] = round(opts.get("speed", 1.0) * RETRY_SLOWDOWN, 3)
+        kw["backend_opts"] = opts
+        if attempt < MAX_RETRIES:
+            print(f"[dialogue] WARNING: turn {turn_no} rendered {dur:.1f}s for {n_words} words "
+                  f"(floor {floor:.1f}s) — likely dropped words; retrying at speed {opts['speed']}",
+                  file=sys.stderr)
+    raise PodcastClientError(
+        f"turn {turn_no} still too short after {MAX_RETRIES} retries: {dur:.1f}s for "
+        f"{n_words} words (floor {floor:.1f}s) — the TTS is dropping words from: {line!r}"
+    )
+
 
 def group_turns(turns: list[dict]) -> list[tuple[str, list[dict]]]:
     """Split turns into contiguous same-speaker groups, preserving order."""
@@ -182,8 +242,9 @@ def render_dialogue_to_mp3(
             seg_mp3 = tmp_dir / f"seg-{i:03d}-{speaker}.mp3"
             if verbose:
                 print(f"[dialogue] rendering turn {i + 1}/{len(turns)} ({speaker})")
-            render(url, token, seg_script, seg_mp3,
-                   backend=backend, verbose=False, **voices[speaker])
+            render_turn_guarded(url, token, seg_script, seg_mp3,
+                                backend=backend, voice_kwargs=voices[speaker],
+                                line=t["line"], turn_no=i + 1, verbose=verbose)
             segments.append(seg_mp3)
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -216,11 +277,7 @@ def concat_mp3s(segments: list[Path], out: Path, gap: float = 0.5, fade: bool = 
     tmp_norm: list[Path] = []
     for seg in segments:
         norm = seg.with_suffix(".norm.mp3")
-        dur = float(subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "csv=p=0", str(seg)],
-            check=True, capture_output=True, text=True,
-        ).stdout.strip())
+        dur = _probe_duration(seg)
         fade_out_start = max(0.0, dur - edge_fade)
         subprocess.run(
             ["ffmpeg", "-y", "-i", str(seg),

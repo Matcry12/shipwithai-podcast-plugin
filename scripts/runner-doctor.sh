@@ -11,6 +11,12 @@
 set -uo pipefail
 
 PODCAST="${PODCAST_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+# Sourced here, before DRAFTS/SITE below take their ${VAR:-default} -- see the
+# matching note in ci-podcast.sh. Otherwise this doctor would validate the
+# hardcoded fallback paths instead of whatever .env actually configures.
+set -a; . "$PODCAST/.env" 2>/dev/null; set +a
+
 DRAFTS="${DRAFTS_DIR:-$HOME/Developer/shipwithai-content-agent-plugin/drafts}"
 SITE="${SITE_REPO:-$HOME/Developer/shipwithai.io}"
 fails=0
@@ -53,7 +59,6 @@ else bad "no drafts at $DRAFTS" "drafts are written by the content plugin and gi
 
 echo
 echo "== render server =="
-set -a; . "$PODCAST/.env" 2>/dev/null; set +a
 if [ -z "${PODCAST_URL:-}" ] || [ -z "${PODCAST_TOKEN:-}" ]; then
   bad "PODCAST_URL / PODCAST_TOKEN unset" "copy .env from a working machine (gitignored); see .env.example"
 elif curl -fsS --max-time 10 -H "Authorization: Bearer $PODCAST_TOKEN" "$PODCAST_URL/health" >/dev/null 2>&1; then
