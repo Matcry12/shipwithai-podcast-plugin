@@ -41,9 +41,12 @@ MAX="${PODCAST_MAX_PER_PUSH:-3}"
 # the escape hatch if that host is unavailable and an episode has to ship.
 ENGINE="${PODCAST_ENGINE:-}"
 
-# Render->review cycles before giving up and asking for a human. Matches the
-# bounded loop the critic itself references in its report.
-CYCLES="${PODCAST_MAX_CYCLES:-2}"
+# Render->review cycles before giving up and asking for a human. Three, not
+# two: a `regenerate` followed by a `fix` is progress, and the `fix` has not yet
+# had its own repair attempt. Observed 2026-09-12 on the first VI run -- the
+# script was clean at 34/35 and only the audio tail needed re-rendering, but the
+# loop had already spent both cycles.
+CYCLES="${PODCAST_MAX_CYCLES:-3}"
 
 set -a; . "$PODCAST/.env" 2>/dev/null; set +a
 
@@ -154,12 +157,26 @@ for post in "${todo[@]}"; do
   # LLM each pass, so a `regenerate` is routine rather than exceptional -- the
   # first CI run tripped on an invented statistic in turn 3. Bounded, because a
   # critic that never says ship must reach a human instead of looping forever.
+  #
+  # The two non-ship verdicts mean different things and get different retries:
+  #   regenerate  the SCRIPT is wrong  -> re-author from the draft, re-render
+  #   fix         the AUDIO is wrong   -> re-render the approved script as-is
+  # Re-authoring on a `fix` is not just wasteful: it hands the LLM a fresh chance
+  # to hallucinate into a script the critic had already passed at 34/35.
   mp3="$PODCAST/podcasts/$id.mp3"
   verdict=""
   for cycle in $(seq 1 "$CYCLES"); do
     echo "[1/4] render (remote server, engine=${ENGINE:-auto})  cycle $cycle/$CYCLES"
-    run "/content-podcast \"$draft\" --mode dialogue${ENGINE:+ --engine $ENGINE}" \
-      || { echo "render failed"; break; }
+    prompt="/content-podcast \"$draft\" --mode dialogue${ENGINE:+ --engine $ENGINE}"
+    if [ "$verdict" = "fix" ]; then
+      prompt="$prompt
+
+The critic returned 'fix' on the previous cycle: the dialogue script at
+podcasts/$id.json is APPROVED as written. Do NOT re-author or edit it. Render
+that exact script again, re-run Whisper QA, and re-emit the metadata stub. See
+podcast-reports/$id.md for the audio defect being fixed."
+    fi
+    run "$prompt" || { echo "render failed"; break; }
     # A zero exit does not mean the audio exists. Observed: the agent submitted
     # the render, said it would collect the mp3 "once it comes back", and ended
     # the session -- leaving only the dialogue script. Check the artifact, not
@@ -176,7 +193,12 @@ for post in "${todo[@]}"; do
       "$PODCAST/podcast-reports/$id.critic.yaml" 2>/dev/null | head -1)"
     echo "critic verdict: ${verdict:-<none>}"
     [ "$verdict" = "ship" ] && break
-    [ "$cycle" -lt "$CYCLES" ] && echo "        re-authoring from the draft (cycle $((cycle+1)))"
+    if [ "$cycle" -lt "$CYCLES" ]; then
+      case "$verdict" in
+        fix) echo "        re-rendering the approved script (cycle $((cycle+1)))" ;;
+        *)   echo "        re-authoring from the draft (cycle $((cycle+1)))" ;;
+      esac
+    fi
   done
 
   [ "$verdict" = "ship" ] || {

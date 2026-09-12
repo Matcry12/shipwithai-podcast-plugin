@@ -240,8 +240,16 @@ def concat_mp3s(segments: list[Path], out: Path, gap: float = 0.5, fade: bool = 
     # classifying quiet speech onsets/tails (soft consonants, breath) as silence
     # and shaving them off along with the real gap, which is what sounded "trimmed".
     # -50dB only catches genuine silence.
+    # apad: 2s of silence after the final turn, so the 3s outro fade below lands
+    # mostly on silence rather than on speech. Without it a short sign-off ("Hẹn
+    # gặp lại ở tập sau." ~2s) sits entirely inside the fade window and is taken
+    # to near-silence -- present in the file, inaudible to Whisper, and the
+    # critic fails the episode for a missing final turn. Observed 2026-09-12.
+    # ponytail: fixed pad; scale it with the last turn's length if 2s ever proves
+    # short for a longer sign-off.
     af = (f"silenceremove=stop_periods=-1:stop_duration={gap}"
-          f":stop_threshold=-50dB:stop_silence={gap}")
+          f":stop_threshold=-50dB:stop_silence={gap},"
+          f"apad=pad_dur=2.0")
     concat_tmp = out.with_suffix(".concat.mp3") if fade else out
     try:
         subprocess.run(
