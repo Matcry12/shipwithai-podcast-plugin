@@ -1,0 +1,22 @@
+[Unit]
+Description=GitHub Actions self-hosted runner (podcast pipeline)
+# A user service, not svc.sh's system service: it runs inside the login session,
+# so the browser stage reaches Chrome through the real DISPLAY and session bus
+# instead of values copied into the runner's .env. Needs `loginctl enable-linger`
+# so it survives logout (already set on this machine).
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=%h/actions-runner
+ExecStart=%h/actions-runner/run.sh
+# The runner exits on its own during self-update and on lost-connection
+# recovery; restart it unconditionally. Observed 2026-09-12: a network blip
+# killed the nohup'd runner and every job queued silently until someone looked.
+Restart=always
+RestartSec=10
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+KillMode=process
+
+[Install]
+WantedBy=default.target
