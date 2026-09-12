@@ -106,13 +106,15 @@ After scoring all dimensions, determine the verdict. **Totals are mode-aware:**
 single-narrator scripts are scored out of **30** (six dimensions); dialogue
 scripts add Conversationality for **35** (seven dimensions). Set `max` accordingly.
 
-- **`ship`**: score >= 24/30 (single) or **>= 28/35 (dialogue)** **AND** no faithfulness failure **AND** `overlapPct` >= 85% (or any low overlap explicitly judged a Whisper artifact, not a real defect) **AND** (dialogue) Conversationality >= 4/5.
-- **`fix`**: minor sayability, standalone, memorability, **or conversationality** issues only (Faithfulness = 8/8, Value >= 5/6, total >= 22/30 single / >= 26/35 dialogue) → the script can be edited and re-rendered without full re-authoring.
+- **`ship`**: score >= 24/30 (single) or **>= 28/35 (dialogue)** **AND** no faithfulness failure **AND** `overlapPct` >= 85% (or any low overlap explicitly judged a Whisper artifact, not a real defect) **AND** `no_systematic_mismatches` = pass **AND** (dialogue) Conversationality >= 4/5.
+- **`fix`**: minor sayability, standalone, memorability, **or conversationality** issues only (Faithfulness = 8/8, Value >= 5/6, total >= 22/30 single / >= 26/35 dialogue) → the script can be edited and re-rendered without full re-authoring. **Also `fix` whenever the audio is missing content the script has** — see the render hard fail below.
 - **`regenerate`**: any invented claim (faithfulness failure, hard fail), or value/faithfulness substantively off (Value < 4/6 or Faithfulness < 6/8), **or (dialogue) Conversationality <= 2/5 — a script that is two monologues rather than a conversation needs re-authoring, not a patch**.
 
 A faithfulness failure is a **hard fail** regardless of total score — always returns `regenerate` and marks the faithfulness item as a blocker. A dialogue Conversationality score <= 2/5 is a **conversation failure** — it caps the verdict at `regenerate` and is marked as a blocker.
 
-Bounded to 2 cycles: if the review skill reports this is the 3rd attempt, note it explicitly in the output and recommend surfacing to the human.
+**A render failure is also a hard fail, capped at `fix`.** If `no_systematic_mismatches` = fail because the audio is *missing content the script has* — a skipped turn, a dropped clause, a truncated line — the verdict is `fix` regardless of total score, and the item is a **major** naming the exact turn and the missing words. The script is fine; only the render is wrong, so `fix` routes it to a re-render rather than a re-author. Never return `ship` with a note asking someone to "listen by ear first": in an unattended run nobody can, and the note is either a defect (then say `fix`) or it is not (then say nothing). Render integrity is worth 2 points, so without this rule a dropped clause in the cold open still clears the ship threshold on aggregate — which is how a self-contradicting first sentence reached the publish stage on 2026-09-12. Whisper homophones and proper-noun substitutions are not render failures; a clause that is absent from the transcript's timing is.
+
+Bounded to 3 cycles: if the review skill reports this is the 4th attempt, note it explicitly in the output and recommend surfacing to the human.
 
 ---
 

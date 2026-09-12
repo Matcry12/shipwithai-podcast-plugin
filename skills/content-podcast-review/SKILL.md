@@ -155,7 +155,7 @@ Print a summary to the user:
 
 ### 6. Bounded loop enforcement
 
-Track fix/regenerate cycles. After **2 cycles** without a `ship` verdict,
+Track fix/regenerate cycles. After **3 cycles** without a `ship` verdict,
 do not loop further. Instead, surface to the user:
 
 > "This is the 3rd review attempt and the verdict is still `<verdict>`. Human

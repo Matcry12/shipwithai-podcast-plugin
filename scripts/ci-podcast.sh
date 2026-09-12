@@ -168,14 +168,31 @@ for post in "${todo[@]}"; do
   for cycle in $(seq 1 "$CYCLES"); do
     echo "[1/4] render (remote server, engine=${ENGINE:-auto})  cycle $cycle/$CYCLES"
     prompt="/content-podcast \"$draft\" --mode dialogue${ENGINE:+ --engine $ENGINE}"
-    if [ "$verdict" = "fix" ]; then
-      prompt="$prompt
+    case "$verdict" in
+      fix)
+        # Keep the script; only the audio is wrong.
+        rm -f "$mp3" "$PODCAST/podcasts/$id.transcript.json"
+        prompt="$prompt
 
 The critic returned 'fix' on the previous cycle: the dialogue script at
 podcasts/$id.json is APPROVED as written. Do NOT re-author or edit it. Render
 that exact script again, re-run Whisper QA, and re-emit the metadata stub. See
-podcast-reports/$id.md for the audio defect being fixed."
-    fi
+podcast-reports/$id.md for the audio defect being fixed." ;;
+      regenerate)
+        # The script itself is wrong, so nothing from the last cycle may survive.
+        # The skill skips authoring when it finds existing artifacts that pass
+        # QA -- sensible by hand, fatal here: observed 2026-09-12, cycle 2
+        # "rendered" in 27 seconds by reusing cycle 1's script, reviewed the same
+        # text, and drew the same regenerate. Clear everything so it must author.
+        rm -f "$PODCAST/podcasts/$id".json "$mp3" \
+              "$PODCAST/podcasts/$id".transcript.json "$stub"
+        prompt="$prompt
+
+The critic returned 'regenerate' on the previous cycle: the previous script had
+an invented claim. Author a NEW script from the draft -- do not reuse any prior
+artifact -- and read podcast-reports/$id.md first so the same claim is not
+reintroduced." ;;
+    esac
     run "$prompt" || { echo "render failed"; break; }
     # A zero exit does not mean the audio exists. Observed: the agent submitted
     # the render, said it would collect the mp3 "once it comes back", and ended
