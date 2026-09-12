@@ -64,22 +64,56 @@ publishing. (Scheduling is what previously stalled the flow on the Review screen
    - **Description** — the episode description (includes a link back to the
      article on the site).
 
-   **Unicode / diacritics warning (VI only):** `type_text()` strips non-ASCII characters — Vietnamese diacritics will be lost (e.g. "Đã đến lúc" becomes "Da den luc"). For VI episodes, insert text via JS `execCommand` to preserve diacritics:
+   **Neutralise Grammarly before touching the description.** The description is
+   a Slate-style rich-text editor: it keeps its content in its own model, not the
+   DOM. Grammarly injects into the same `contenteditable` and swallows synthetic
+   input, so the DOM shows your text while the editor's model stays empty — the
+   field paints a red border and **Next** refuses to advance. Observed 2026-09-12:
+   thirteen minutes of clear-and-retype with no exit, because the old guidance here
+   said "delete and re-insert" and nothing else. Opt the field out first:
 
    ```python
-   # Title (input field — id="title-input")
-   js("document.getElementById('title-input').focus()")
-   js("document.execCommand('insertText', false, 'YOUR VIETNAMESE TITLE HERE')")
-
-   # Description (contenteditable rich-text editor)
-   js("document.querySelector('[contenteditable=\"true\"]').focus()")
-   js("document.execCommand('insertText', false, 'YOUR VIETNAMESE DESCRIPTION HERE')")
-   js("document.querySelector('[contenteditable=\"true\"]').dispatchEvent(new Event('blur', {bubbles:true}))")
+   js("""
+   const el = document.querySelector('[contenteditable="true"]');
+   el.setAttribute('data-gramm', 'false');
+   el.setAttribute('data-gramm_editor', 'false');
+   el.setAttribute('data-enable-grammarly', 'false');
+   document.querySelectorAll('grammarly-extension, grammarly-desktop-integration').forEach(n => n.remove());
+   """)
    ```
 
-   After inserting via `execCommand`, check for a red border on the description field (Spotify React validation may not fire). If the red border appears, click into the field, select all, delete, and re-insert — or scroll down to confirm no "Required" error before clicking Next.
+   **Insert text with `execCommand`, both locales.** It fires the `beforeinput`
+   events Slate listens to, and it preserves Vietnamese diacritics — `type_text()`
+   strips non-ASCII ("Đã đến lúc" becomes "Da den luc"), so never use it for VI.
 
-   Screenshot to confirm both fields took (title shows character count, description shows text).
+   ```python
+   # Title (plain input — id="title-input")
+   js("document.getElementById('title-input').focus()")
+   js("document.execCommand('selectAll')")
+   js("document.execCommand('insertText', false, 'TITLE')")
+
+   # Description (contenteditable). Clear, insert, blur.
+   js("document.querySelector('[contenteditable=\"true\"]').focus()")
+   js("document.execCommand('selectAll')")
+   js("document.execCommand('delete')")
+   js("document.execCommand('insertText', false, 'DESCRIPTION')")
+   js("document.querySelector('[contenteditable=\"true\"]').blur()")
+   ```
+
+   **Verify by advancing, not by reading the DOM.** Screenshot both fields (title
+   shows a character count, description shows text). A red border on the
+   description means the model is empty regardless of what the DOM shows. Do
+   **not** clear and retype in a loop — that is the failure mode this section
+   exists to prevent. Instead:
+
+   1. Re-run the Grammarly opt-out (an extension can re-inject after a
+      re-render), then re-insert the description **once**.
+   2. Click **Next**. If the wizard advances to **Review**, the model accepted the
+      text — continue.
+   3. If it has not advanced after **two** attempts total, **STOP**. Screenshot the
+      field, leave the episode as a draft, and report: "description editor rejected
+      input — Grammarly or another extension is likely active in this Chrome;
+      disable it for creators.spotify.com and re-run". Never a third attempt.
 5. **Advance to Review and set Publish date = *Now*.** Move to the **Review** step and
    confirm the **Publish date** radio is on ***Now***; if it shows *Schedule* (or any future
    date), click ***Now*** so the episode publishes immediately. Never schedule. Screenshot to
