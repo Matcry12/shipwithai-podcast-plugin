@@ -152,9 +152,12 @@ for post in "${todo[@]}"; do
   # a publish storm and a duplicate episode is unrecallable.
   #
   # Drafts live in the content plugin and are gitignored there, so a post can
-  # arrive by git while its draft never does.
+  # arrive by git while its draft never does. A warning, not a failure: most
+  # legacy posts have no draft at all, and a typo fix on one of them must not
+  # turn the run red (observed 2026-09-13). The yellow annotation is still how
+  # a runner with DRAFTS_DIR unset or the drafts never copied gets noticed.
   if [ ! -f "$draft" ]; then
-    echo "BLOCKED: $draft is not on this runner (set DRAFTS_DIR)"; failed=1
+    echo "::warning::$id skipped: no draft at $draft on this runner (legacy post, or DRAFTS_DIR not set / drafts not copied)"
     echo "::endgroup::"; continue
   fi
 
