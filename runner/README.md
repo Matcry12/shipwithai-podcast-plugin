@@ -19,3 +19,40 @@ Logs:  `journalctl --user -u actions-runner -f`.
 Verified 2026-09-12: `kill -9` on the listener, back in ~10s, `NRestarts=1`.
 Before this a network blip killed the nohup'd runner and every job queued
 silently until someone looked.
+
+## macOS (Mac mini)
+
+No systemd. The runner's own `svc.sh` installs a **LaunchAgent** here (not a
+system daemon), which already runs inside the logged-in GUI session — so use it:
+
+```bash
+cd ~/actions-runner
+./svc.sh install && ./svc.sh start
+./svc.sh status
+```
+
+Logs: `~/actions-runner/_diag/`. The agent only runs while that user is logged
+in, so the box must auto-login and never sleep:
+
+```bash
+sudo pmset -a sleep 0 disksleep 0 displaysleep 10
+# System Settings -> Users & Groups -> Automatic login -> <this user>
+```
+
+`~/actions-runner/.env` needs no DISPLAY/XAUTHORITY/DBUS lines. Instead point
+browser-harness at a dedicated Chrome that was launched with a debugging port —
+that Chrome never shows the "Allow remote debugging?" popup which stalled
+unattended runs on Linux:
+
+```
+PATH=/Users/<you>/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
+PODCAST_REPO=/Users/<you>/Developer/shipwithai-podcast-plugin
+DRAFTS_DIR=/Users/<you>/Developer/shipwithai-content-agent-plugin/drafts
+BU_CDP_URL=http://127.0.0.1:9222
+HOME=/Users/<you>
+LANG=en_US.UTF-8
+```
+
+Keep that Chrome alive across reboots with `~/Library/LaunchAgents/podcast.chrome.plist`
+(`KeepAlive`, args `--remote-debugging-port=9222 --user-data-dir=$HOME/chrome-podcast`),
+then log into Spotify for Creators in it **once** — the profile persists.

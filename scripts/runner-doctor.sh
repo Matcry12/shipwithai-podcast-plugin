@@ -84,7 +84,15 @@ done
 
 echo
 echo "== display (stage 3 needs a real browser) =="
-if [ -n "${DISPLAY:-}" ]; then
+if [ "$(uname)" = Darwin ]; then
+  # No X here; browser-harness reaches Chrome over CDP. A dedicated Chrome
+  # launched with --remote-debugging-port never shows the "Allow remote
+  # debugging?" popup that stalled unattended runs on the Linux box.
+  cdp="${BU_CDP_URL:-http://127.0.0.1:9222}"
+  curl -fsS --max-time 3 "$cdp/json/version" >/dev/null 2>&1 \
+    && ok "Chrome answering CDP at $cdp" \
+    || bad "no Chrome on $cdp" "open -a 'Google Chrome' --args --remote-debugging-port=9222 --user-data-dir=\$HOME/chrome-podcast, log into Spotify in it once, set BU_CDP_URL in ~/actions-runner/.env"
+elif [ -n "${DISPLAY:-}" ]; then
   ok "DISPLAY=$DISPLAY"
   [ -n "${XAUTHORITY:-}" ] && [ -f "${XAUTHORITY:-}" ] && ok "XAUTHORITY readable" \
     || warn "XAUTHORITY unset or missing" "a systemd service has no session; set it in ~/actions-runner/.env"
@@ -96,9 +104,9 @@ echo
 echo "== runner =="
 if [ -f "$HOME/actions-runner/.runner" ]; then
   ok "registered"
-  systemctl list-units --all 2>/dev/null | grep -q actions.runner \
+  { systemctl --user list-units --all 2>/dev/null; launchctl list 2>/dev/null; } | grep -q actions.runner \
     && ok "installed as a service" \
-    || warn "not a service" "it dies with your shell and jobs then queue with no error: sudo ./svc.sh install \$USER"
+    || warn "not a service" "it dies with your shell and jobs then queue with no error: see runner/README.md"
 else
   warn "no runner registered here" "Settings -> Actions -> Runners -> New self-hosted runner, then ./config.sh --labels podcast"
 fi
