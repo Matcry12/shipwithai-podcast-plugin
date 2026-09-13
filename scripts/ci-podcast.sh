@@ -201,7 +201,15 @@ for post in "${todo[@]}"; do
 Use the draft's frontmatter title VERBATIM as episodeTitle in the metadata
 stub (do not rephrase or make it 'sayable'): the posting stage recognises an
 already-published episode by exact title match, so the title must be the same
-on every render of this post."
+on every render of this post.
+
+FAITHFULNESS RULE (hard fail downstream): never state a number, duration,
+size, line count, percentage, price or comparison that is not literally in the
+draft -- not as a hook, not as an estimate, not as colour. 'takes five
+minutes', 'about three lines', 'twice as fast' with no such figure in the draft
+each cost a whole render cycle today. When tempted, say it qualitatively
+('a short script', 'quickly') or cut it. Before you finish, re-read every
+sentence containing a digit or a number word and confirm it is in the draft."
     case "$verdict" in
       fix)
         # Keep the script, apply the critic's listed edits, re-render. 'fix'
@@ -226,14 +234,23 @@ the metadata stub." ;;
         # QA -- sensible by hand, fatal here: observed 2026-09-12, cycle 2
         # "rendered" in 27 seconds by reusing cycle 1's script, reviewed the same
         # text, and drew the same regenerate. Clear everything so it must author.
-        rm -f "$PODCAST/podcasts/$id".json "$mp3" \
-              "$PODCAST/podcasts/$id".transcript.json "$stub"
+        # Keep the script this time. Re-authoring from scratch after an
+        # invented figure produced a *different* invented figure on the next
+        # cycle, twice in a row (2026-09-13: 'five minutes', then 'three
+        # lines'). The critic writes an exact fix for every blocker; applying
+        # it is one edit with no new dice roll. Only a structural failure
+        # (the report says the conversation itself failed) needs a rewrite.
+        rm -f "$mp3" "$PODCAST/podcasts/$id".transcript.json "$stub"
         prompt="$prompt
 
-The critic returned 'regenerate' on the previous cycle: the previous script had
-an invented claim. Author a NEW script from the draft -- do not reuse any prior
-artifact -- and read podcast-reports/$id.md first so the same claim is not
-reintroduced." ;;
+The critic returned 'regenerate' on the previous cycle. Open
+podcast-reports/$id.critic.yaml. For every item under blockers, majors, minors
+and nits, apply the edit in its 'fix:' line to the EXISTING script at
+podcasts/$id.json -- remove or replace the flagged claim exactly as the fix
+says, and change nothing else. Do NOT author a fresh script from the draft
+unless a blocker says the dialogue structure itself failed (two monologues,
+no conversation); a fresh authoring has reintroduced a new invented figure
+every time it was tried. Then render, re-run Whisper QA, re-emit the stub." ;;
     esac
     run "$prompt" || { echo "render failed"; break; }
     # A zero exit does not mean the audio exists. Observed: the agent submitted
@@ -255,7 +272,7 @@ reintroduced." ;;
     if [ "$cycle" -lt "$CYCLES" ]; then
       case "$verdict" in
         fix) echo "        patching the script per critic and re-rendering (cycle $((cycle+1)))" ;;
-        *)   echo "        re-authoring from the draft (cycle $((cycle+1)))" ;;
+        *)   echo "        removing the flagged claims from the script and re-rendering (cycle $((cycle+1)))" ;;
       esac
     fi
   done
