@@ -68,7 +68,13 @@ return. Run every long step in the FOREGROUND and block until it finishes. Do
 not background a command, do not defer work to a later check-in or wakeup, and
 do not return until the artifacts exist on disk. A backgrounded task is lost.'
 
-run() { ( cd "$PODCAST" && claude -p --permission-mode "$PERM_MODE" "$1$CI_NOTE" ); }
+# Pinned, not inherited: without these claude -p takes the model and effort
+# from whatever ~/.claude/settings.json says on the machine it runs on, so the
+# same push would be written by a different model on the Mac than on the PC.
+# Everything verified so far (ship 35/35, patch cycles) ran on sonnet/medium.
+MODEL="${PODCAST_MODEL:-sonnet}"
+EFFORT="${PODCAST_EFFORT:-medium}"
+run() { ( cd "$PODCAST" && claude -p --model "$MODEL" --effort "$EFFORT" --permission-mode "$PERM_MODE" "$1$CI_NOTE" ); }
 
 # Render writes type:"" ; posting fills it. A zero exit from the posting stage
 # does not prove the publish landed -- the stub does.
