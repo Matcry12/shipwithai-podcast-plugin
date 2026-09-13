@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -193,6 +194,13 @@ def build_voice_kwargs(
     return voices
 
 
+def _seg_cache_path(out_path: Path, backend: str, voice_kwargs: dict, line: str) -> Path:
+    """podcasts/.segcache/<sha1 of backend+voice kwargs+line>.mp3, next to the episode."""
+    key = hashlib.sha1(json.dumps([backend, voice_kwargs, line], sort_keys=True,
+                                  default=str, ensure_ascii=False).encode()).hexdigest()
+    return out_path.parent / ".segcache" / f"{key}.mp3"
+
+
 def render_dialogue_to_mp3(
     url: str,
     token: str,
@@ -240,11 +248,24 @@ def render_dialogue_to_mp3(
                  "turns": [{"voice": "narrator", "line": t["line"]}]},
                 ensure_ascii=False), encoding="utf-8")
             seg_mp3 = tmp_dir / f"seg-{i:03d}-{speaker}.mp3"
-            if verbose:
-                print(f"[dialogue] rendering turn {i + 1}/{len(turns)} ({speaker})")
-            render_turn_guarded(url, token, seg_script, seg_mp3,
-                                backend=backend, voice_kwargs=voices[speaker],
-                                line=t["line"], turn_no=i + 1, verbose=verbose)
+            # Same backend + voice + words = same audio. A review cycle that
+            # changes one turn used to re-render all thirty (~7 min); with the
+            # cache it re-renders one. Keyed on the kwargs too, so a different
+            # clip, ref text or speed is a different segment.
+            cached = _seg_cache_path(out_path, backend, voices[speaker], t["line"])
+            if backend != "dummy" and cached.is_file() and cached.stat().st_size > 0:
+                shutil.copyfile(cached, seg_mp3)
+                if verbose:
+                    print(f"[dialogue] turn {i + 1}/{len(turns)} ({speaker}) from cache")
+            else:
+                if verbose:
+                    print(f"[dialogue] rendering turn {i + 1}/{len(turns)} ({speaker})")
+                render_turn_guarded(url, token, seg_script, seg_mp3,
+                                    backend=backend, voice_kwargs=voices[speaker],
+                                    line=t["line"], turn_no=i + 1, verbose=verbose)
+                if backend != "dummy":
+                    cached.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(seg_mp3, cached)
             segments.append(seg_mp3)
 
         out_path.parent.mkdir(parents=True, exist_ok=True)

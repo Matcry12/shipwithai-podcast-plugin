@@ -66,5 +66,38 @@ class Guard(unittest.TestCase):
         self.assertEqual(len(self.calls), 1)
 
 
+class SegmentCache(unittest.TestCase):
+    """A turn whose backend, voice and words are unchanged is not rendered again."""
+
+    def test_second_render_only_renders_changed_turns(self):
+        import shutil, tempfile
+        rendered: list[str] = []
+
+        def fake_render(url, token, script, out, *, backend, verbose, **kw):
+            rendered.append(Path(script).read_text())
+            Path(out).write_bytes(b"ID3fake")
+
+        rd.render = fake_render
+        rd._probe_duration = lambda p: 999.0
+        rd.concat_mp3s = lambda segs, out, gap=0.5, fade=True: Path(out).write_bytes(b"ID3out")
+        d = Path(tempfile.mkdtemp())
+        try:
+            voices = {"host": {"backend_opts": {"ref_audio": "a.wav"}}, "cohost": {"backend_opts": {"ref_audio": "b.wav"}}}
+            script = {"host_mode": "dialogue", "turns": [
+                {"voice": "host", "line": "one"}, {"voice": "cohost", "line": "two"}, {"voice": "host", "line": "three"}]}
+            rd.render_dialogue_to_mp3("u", "t", script, d / "ep.mp3", "omnivoice", voices, verbose=False)
+            self.assertEqual(len(rendered), 3)
+            script["turns"][1]["line"] = "two, patched"
+            rd.render_dialogue_to_mp3("u", "t", script, d / "ep.mp3", "omnivoice", voices, verbose=False)
+            self.assertEqual(len(rendered), 4)                      # only the patched turn
+            self.assertIn("two, patched", rendered[-1])
+            # same words, other voice -> different segment
+            script["turns"][0]["voice"] = "cohost"
+            rd.render_dialogue_to_mp3("u", "t", script, d / "ep.mp3", "omnivoice", voices, verbose=False)
+            self.assertEqual(len(rendered), 5)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()
