@@ -171,14 +171,22 @@ for post in "${todo[@]}"; do
     prompt="/content-podcast \"$draft\" --mode dialogue${ENGINE:+ --engine $ENGINE}"
     case "$verdict" in
       fix)
-        # Keep the script; only the audio is wrong.
+        # Keep the script, apply the critic's listed edits, re-render. 'fix'
+        # covers two cases (see agents/podcast-critic.md): small script issues
+        # the critic already wrote the exact edit for, or audio missing content
+        # the script has. Either way the script is patched, not re-authored.
+        # Telling the agent the script was "approved as written" made it refuse
+        # the cycle outright when the report listed script edits (2026-09-13).
         rm -f "$mp3" "$PODCAST/podcasts/$id.transcript.json"
         prompt="$prompt
 
-The critic returned 'fix' on the previous cycle: the dialogue script at
-podcasts/$id.json is APPROVED as written. Do NOT re-author or edit it. Render
-that exact script again, re-run Whisper QA, and re-emit the metadata stub. See
-podcast-reports/$id.md for the audio defect being fixed." ;;
+The critic returned 'fix' on the previous cycle. Keep the existing dialogue
+script at podcasts/$id.json -- do NOT re-author it from the draft. Open
+podcast-reports/$id.critic.yaml and apply exactly the edits in each item's
+'fix:' line (majors, minors, nits) to that script, nothing more. If an item is
+a render defect (audio missing words the script has), the script needs no
+change for it. Then render the patched script, re-run Whisper QA, and re-emit
+the metadata stub." ;;
       regenerate)
         # The script itself is wrong, so nothing from the last cycle may survive.
         # The skill skips authoring when it finds existing artifacts that pass
@@ -213,14 +221,14 @@ reintroduced." ;;
     [ "$verdict" = "ship" ] && break
     if [ "$cycle" -lt "$CYCLES" ]; then
       case "$verdict" in
-        fix) echo "        re-rendering the approved script (cycle $((cycle+1)))" ;;
+        fix) echo "        patching the script per critic and re-rendering (cycle $((cycle+1)))" ;;
         *)   echo "        re-authoring from the draft (cycle $((cycle+1)))" ;;
       esac
     fi
   done
 
   [ "$verdict" = "ship" ] || {
-    echo "HALTED by critic after $CYCLES cycle(s) -- nothing published"
+    echo "HALTED after $cycle cycle(s), last verdict ${verdict:-<none>} -- nothing published"
     echo "See podcast-reports/$id.critic.yaml; this one needs a human."
     failed=1; echo "::endgroup::"; continue; }
 
