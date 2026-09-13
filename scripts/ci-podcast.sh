@@ -240,7 +240,9 @@ the metadata stub." ;;
         # lines'). The critic writes an exact fix for every blocker; applying
         # it is one edit with no new dice roll. Only a structural failure
         # (the report says the conversation itself failed) needs a rewrite.
-        rm -f "$mp3" "$PODCAST/podcasts/$id".transcript.json "$stub"
+        # The stub stays: its podcast block is empty until publish, and the
+        # review stage refuses to run without it (observed when it was removed).
+        rm -f "$mp3" "$PODCAST/podcasts/$id".transcript.json
         prompt="$prompt
 
 The critic returned 'regenerate' on the previous cycle. Open
@@ -264,6 +266,10 @@ every time it was tried. Then render, re-run Whisper QA, re-emit the stub." ;;
     echo "        rendered $(du -h "$mp3" | cut -f1)"
 
     echo "[2/4] review"
+    # A review that errors out must yield NO verdict, not last cycle's. With
+    # the file left in place an errored cycle 2 re-read cycle 1's regenerate
+    # and burned the loop on a script that had already been patched.
+    rm -f "$PODCAST/podcast-reports/$id.critic.yaml"
     run "/content-podcast-review $id" || echo "review errored"
     verdict="$(sed -n 's/^verdict:[[:space:]]*//p' \
       "$PODCAST/podcast-reports/$id.critic.yaml" 2>/dev/null | head -1)"
