@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # setup-mac.sh -- bootstrap a Mac mini as the podcast runner, under ~/podcast/.
 #
-#   curl -fsSL https://raw.githubusercontent.com/Matcry12/shipwithai-podcast-plugin/master/scripts/setup-mac.sh | bash
+#   curl -fsSLO https://raw.githubusercontent.com/Matcry12/shipwithai-podcast-plugin/master/scripts/setup-mac.sh
+#   bash setup-mac.sh
 #
-# Safe to rerun: every step skips what already exists. It does everything that
-# a script CAN do; the four things it cannot (three logins and the runner
-# token, all tied to a human's accounts) are printed at the end.
+# Download first, then run -- NOT `curl | bash`: the GitHub login inside needs
+# the keyboard. Safe to rerun: every step skips what already exists. It does
+# everything a script CAN do; the three things it cannot (logins tied to a
+# human's accounts, and the runner token) it stops for or prints at the end.
 #
 #   ~/podcast/plugin            this repo
 #   ~/podcast/browser-harness   browser tool
@@ -23,15 +25,21 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 step "tools"
 have brew || { echo "Homebrew missing -- install from https://brew.sh then rerun"; exit 1; }
-for b in ffmpeg jq gh uv node; do have "$b" && echo "  ok $b" || brew install "$b"; done
+for b in ffmpeg jq gh uv node python3; do have "$b" && echo "  ok $b" || brew install "$b"; done
 have claude && echo "  ok claude" || npm i -g @anthropic-ai/claude-code
+[ -d "/Applications/Google Chrome.app" ] && echo "  ok chrome" || brew install --cask google-chrome
+
+# The plugin repo is private, so cloning needs a GitHub login. gh handles the
+# credential and the clone; no SSH key to set up on this box.
+step "github login"
+gh auth status >/dev/null 2>&1 && echo "  ok gh" || gh auth login --hostname github.com --git-protocol https --web
 
 step "code under $P"
 mkdir -p "$P"
 [ -d "$P/plugin/.git" ] && echo "  ok plugin" \
-  || git clone git@github.com:Matcry12/shipwithai-podcast-plugin.git "$P/plugin"
+  || gh repo clone Matcry12/shipwithai-podcast-plugin "$P/plugin"
 [ -d "$P/browser-harness/.git" ] && echo "  ok browser-harness" \
-  || git clone git@github.com:browser-use/browser-harness.git "$P/browser-harness"
+  || git clone https://github.com/browser-use/browser-harness "$P/browser-harness"
 have browser-harness && echo "  ok browser-harness on PATH" \
   || (cd "$P/browser-harness" && uv tool install -e . && uv tool update-shell)
 
@@ -51,27 +59,31 @@ HOME=$HOME
 LANG=en_US.UTF-8
 EOF
 
-step "never sleep"
+step "never sleep (asks for your password)"
 sudo pmset -a sleep 0 disksleep 0 displaysleep 10 && echo "  ok pmset"
 
 # .env voice paths still say /home/matcry after a copy; fix them if the file is here.
-[ -f "$P/plugin/.env" ] && sed -i '' "s#/home/matcry/voice_lab/voices#$P/voices#g" "$P/plugin/.env"
+if [ -f "$P/plugin/.env" ]; then
+  sed -i '' "s#/home/matcry/voice_lab/voices#$P/voices#g" "$P/plugin/.env"
+  echo "  ok .env voice paths -> $P/voices"
+fi
 
 cat <<EOF
 
-DONE with the automatic part. Four things need YOU (they are logins):
+DONE with the automatic part. Three things need YOU:
 
-  1. copy from the writing machine:
+  1. copy from the writing machine (any way you like):
        drafts/  -> $P/drafts/      voices/*.wav -> $P/voices/      .env -> $P/plugin/.env
-     then rerun this script once so it fixes the voice paths in .env
-  2. claude           (then type /login, finish in the browser, /exit)
-  3. gh auth login    (GitHub.com -> SSH -> browser)
-  4. open -a "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir=$P/chrome-profile
+     then run this script once more so it fixes the voice paths inside .env
+  2. claude           (type /login, finish in the browser, then /exit)
+  3. open -a "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir=$P/chrome-profile
      -> log into creators.spotify.com/home in that window, leave it open
 
-Then check:   cd $P/plugin && DRAFTS_DIR=$P/drafts RUNNER_DIR=$P/runner BU_CDP_URL=http://127.0.0.1:9222 bash scripts/runner-doctor.sh
-Then register the runner (needs a fresh token from the repo admin, macOS/ARM64):
-     cd $P/runner && <GitHub's curl + tar lines> && ./config.sh --url ... --token ... --labels podcast
-     ./svc.sh install && ./svc.sh start
-And enable: System Settings -> Users & Groups -> Automatic login.
+Then check:
+  cd $P/plugin && DRAFTS_DIR=$P/drafts RUNNER_DIR=$P/runner BU_CDP_URL=http://127.0.0.1:9222 bash scripts/runner-doctor.sh
+
+Then register the runner (fresh token from the repo admin: New self-hosted runner -> macOS -> ARM64):
+  cd $P/runner && <paste GitHub's curl + tar lines> && ./config.sh --url ... --token ... --labels podcast
+  ./svc.sh install && ./svc.sh start
+And: System Settings -> Users & Groups -> Automatic login -> this user.
 EOF

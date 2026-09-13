@@ -22,6 +22,9 @@ silently until someone looked.
 
 ## macOS (Mac mini)
 
+`scripts/setup-mac.sh` does everything below except the logins and the runner
+token; the rest of this section is what it automates.
+
 No systemd. The runner's own `svc.sh` installs a **LaunchAgent** here (not a
 system daemon), which already runs inside the logged-in GUI session — so use it:
 
