@@ -105,7 +105,7 @@ echo "== runner =="
 RUNNER="${RUNNER_DIR:-$HOME/actions-runner}"
 if [ -f "$RUNNER/.runner" ]; then
   ok "registered"
-  { systemctl --user list-units --all 2>/dev/null; launchctl list 2>/dev/null; } | grep -q actions.runner \
+  { systemctl --user list-units --all 2>/dev/null; launchctl list 2>/dev/null; :; } | grep actions.runner >/dev/null \
     && ok "installed as a service" \
     || warn "not a service" "it dies with your shell and jobs then queue with no error: see runner/README.md"
 else
