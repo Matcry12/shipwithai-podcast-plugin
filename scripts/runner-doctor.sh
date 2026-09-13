@@ -102,7 +102,8 @@ fi
 
 echo
 echo "== runner =="
-if [ -f "$HOME/actions-runner/.runner" ]; then
+RUNNER="${RUNNER_DIR:-$HOME/actions-runner}"
+if [ -f "$RUNNER/.runner" ]; then
   ok "registered"
   { systemctl --user list-units --all 2>/dev/null; launchctl list 2>/dev/null; } | grep -q actions.runner \
     && ok "installed as a service" \
