@@ -226,8 +226,9 @@ script at podcasts/$id.json -- do NOT re-author it from the draft. Open
 podcast-reports/$id.critic.yaml and apply exactly the edits in each item's
 'fix:' line (majors, minors, nits) to that script, nothing more. If an item is
 a render defect (audio missing words the script has), the script needs no
-change for it. Then render the patched script, re-run Whisper QA, and re-emit
-the metadata stub." ;;
+change for it. Keep turns strictly alternating host / cohost while applying
+them. Then render the patched script, re-run Whisper QA, and re-emit the
+metadata stub." ;;
       regenerate)
         # The script itself is wrong, so nothing from the last cycle may survive.
         # The skill skips authoring when it finds existing artifacts that pass
@@ -252,7 +253,12 @@ podcasts/$id.json -- remove or replace the flagged claim exactly as the fix
 says, and change nothing else. Do NOT author a fresh script from the draft
 unless a blocker says the dialogue structure itself failed (two monologues,
 no conversation); a fresh authoring has reintroduced a new invented figure
-every time it was tried. Then render, re-run Whisper QA, re-emit the stub." ;;
+every time it was tried. INVARIANT the fixes may not break: turns strictly
+alternate host / cohost, the cohost asks and the host explains. If a fix line
+would put two consecutive turns in the same voice (a critic once said
+'reassign turn 9 to cohost' while turn 10 already was), reassign the adjacent
+turn so the pattern holds rather than applying the fix literally. Then render,
+re-run Whisper QA, re-emit the stub." ;;
     esac
     run "$prompt" || { echo "render failed"; break; }
     # A zero exit does not mean the audio exists. Observed: the agent submitted
