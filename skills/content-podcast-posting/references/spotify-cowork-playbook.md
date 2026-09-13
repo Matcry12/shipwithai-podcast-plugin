@@ -15,7 +15,7 @@ do each navigate→act→screenshot inside a single tool call. Never click blind
 ids are not stable — re-discover the tab by URL substring each time, not by a cached id.
 
 ## Preconditions (the calling skill checks these first)
-- `podcasts/<slug>--<locale>.mp3` exists and review returned `ship` / `ship-after-fix`.
+- `podcasts/<slug>--<locale>.mp3` exists and review returned `ship`.
 - A browser capability is available. If none, print `STOP: no browser capability available` — this backend cannot run.
 - The Spotify *show* already exists (one-time human setup; not automated here).
 

@@ -14,6 +14,7 @@
 # !! Stage 3 passes --yes-publish. Every qualifying push publishes irreversibly
 # !! to a PUBLIC Spotify feed with no human check.
 set -uo pipefail
+((BASH_VERSINFO[0] >= 4)) || { echo "bash >= 4 required (macOS /bin/bash is 3.2: brew install bash, put /opt/homebrew/bin first on PATH)"; exit 1; }
 
 SITE="${SITE_REPO:?SITE_REPO not set}"
 # This repo. Everything the pipeline produces (podcasts/, podcast-reports/)
@@ -83,16 +84,23 @@ PY
 # and those should not fail merely because the render host is asleep -- it is
 # also what lets the runner wiring be tested before that host exists.
 #
-# A brand-new branch reports before as all-zeros; there is nothing to diff
-# against, so take the files introduced by the head commit alone.
+# "Arrived" means posts ADDED or MODIFIED by commits the blogger put on this
+# branch -- not a tree diff of BEFORE..AFTER. A tree diff of a merge (or a
+# rebase + force-push) of master into a demo branch lists every post master
+# gained since the branch forked (125 today), and the cap would then publish
+# the first three alphabetically, unchosen and unrecallable. So: first-parent
+# walk (drops the merged-in side), no merge commits, nothing already on master
+# (drops the rebased-onto side), added/modified only (a deleted post has no
+# file to render from). A brand-new branch (BEFORE all-zeros) or a BEFORE this
+# clone can no longer see both reduce to "everything on the branch that is
+# not on master". core.quotePath=false so a non-ASCII filename comes back
+# literal rather than C-escaped and unmatchable.
 ZERO=0000000000000000000000000000000000000000
-if [ "$BEFORE" = "$ZERO" ]; then
-  mapfile -t arrived < <(git -C "$SITE" show --name-only --pretty=format: "$AFTER" \
-    -- 'src/content/blog/en/*.md' 'src/content/blog/vi/*.md' | grep -v '^$')
-else
-  mapfile -t arrived < <(git -C "$SITE" diff --name-only "$BEFORE" "$AFTER" \
-    -- 'src/content/blog/en/*.md' 'src/content/blog/vi/*.md')
-fi
+range="$BEFORE..$AFTER"
+{ [ "$BEFORE" = "$ZERO" ] || ! git -C "$SITE" cat-file -e "$BEFORE^{commit}" 2>/dev/null; } && range="$AFTER"
+mapfile -t arrived < <(git -C "$SITE" -c core.quotePath=false log --first-parent --no-merges \
+    --diff-filter=AM --name-only --pretty=format: "$range" ^origin/master \
+    -- 'src/content/blog/en/*.md' 'src/content/blog/vi/*.md' | grep -v '^$' | sort -u)
 
 [ "${#arrived[@]}" -eq 0 ] && { echo "no blog posts in this push"; exit 0; }
 
@@ -109,9 +117,17 @@ for post in "${arrived[@]}"; do
 done
 [ "${#todo[@]}" -eq 0 ] && { echo "nothing to podcast in this push"; exit 0; }
 
+# A post that does not ship must turn the job red. Without this every failure
+# path below `continue`s and the loop ends 0 -- a green tick over a push that
+# published nothing, which is worse than no CI at all.
+failed=0
+
 if [ "${#todo[@]}" -gt "$MAX" ]; then
-  echo "capped at $MAX of ${#todo[@]} (raise PODCAST_MAX_PER_PUSH)"
+  # The dropped posts only come back if someone edits them again, so this is
+  # a red tick with their names, not a note nobody reads.
+  for post in "${todo[@]:$MAX}"; do echo "::warning::$(basename "$post" .md) NOT processed -- push capped at $MAX (PODCAST_MAX_PER_PUSH); edit it again to retry"; done
   todo=("${todo[@]:0:$MAX}")
+  failed=1
 fi
 
 echo "::group::preflight"
@@ -134,13 +150,11 @@ echo "::endgroup::"
 git -C "$SITE" config user.name  "podcast-bot"
 git -C "$SITE" config user.email "noreply@shipwithai.io"
 
-# A post that does not ship must turn the job red. Without this every failure
-# path below `continue`s and the loop ends 0 -- a green tick over a push that
-# published nothing, which is worse than no CI at all.
-failed=0
-
 for post in "${todo[@]}"; do
   slug="$(basename "$post" .md)"
+  # Some posts are named <slug>--en.md already; without this the id would be
+  # <slug>--en--en and an agent that "normalises" it writes the mp3 elsewhere.
+  slug="${slug%--en}"; slug="${slug%--vi}"
   locale="$(basename "$(dirname "$post")")"     # en | vi
   id="$slug--$locale"
   draft="$DRAFTS/$id.md"
@@ -152,7 +166,21 @@ for post in "${todo[@]}"; do
   # filter above is the second, because [skip ci] is one careless edit away from
   # a publish storm and a duplicate episode is unrecallable.
   #
-  mkdir -p "$DRAFTS" && cp "$SITE/$post" "$draft"
+  # Everything under podcasts/ and podcast-reports/ persists on this runner
+  # across pushes. Two cases:
+  #  - the stub already carries a link: a previous run published this post
+  #    and then failed to commit the yml (push rejected, job killed). Do not
+  #    render, review or publish again -- inject the link it has.
+  #  - anything else is stale and must go, or a critic.yaml from last week
+  #    supplies a `ship` for audio nobody reviewed when this run's review
+  #    stage errors out, and last week's mp3 satisfies the artifact check.
+  kind="$(stub_type "$stub")"
+  if [ -n "$kind" ]; then
+    echo "already published ($kind) by an earlier run -- stub has the link; injecting only"
+  else
+  rm -f "$PODCAST/podcasts/$id".* "$PODCAST/podcast-reports/$id".*
+  mkdir -p "$DRAFTS" && cp "$SITE/$post" "$draft" \
+    || { echo "cannot copy $post into drafts/"; failed=1; echo "::endgroup::"; continue; }
 
   # Render -> review, retried on a non-ship verdict. The script is authored by an
   # LLM each pass, so a `regenerate` is routine rather than exceptional -- the
@@ -168,7 +196,12 @@ for post in "${todo[@]}"; do
   verdict=""
   for cycle in $(seq 1 "$CYCLES"); do
     echo "[1/4] render (remote server, engine=${ENGINE:-auto})  cycle $cycle/$CYCLES"
-    prompt="/content-podcast \"$draft\" --mode dialogue${ENGINE:+ --engine $ENGINE}"
+    prompt="/content-podcast \"$draft\" --mode dialogue${ENGINE:+ --engine $ENGINE}
+
+Use the draft's frontmatter title VERBATIM as episodeTitle in the metadata
+stub (do not rephrase or make it 'sayable'): the posting stage recognises an
+already-published episode by exact title match, so the title must be the same
+on every render of this post."
     case "$verdict" in
       fix)
         # Keep the script, apply the critic's listed edits, re-render. 'fix'
@@ -240,32 +273,64 @@ reintroduced." ;;
   # irreversible step; does not fix the network loss itself, and no-ops (same
   # as before this check existed) when gh is missing/unauthenticated or this
   # is a local, non-Actions run.
-  if [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] && command -v gh >/dev/null; then
+  if [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
     run_status="$(gh run view "$GITHUB_RUN_ID" -R "$GITHUB_REPOSITORY" --json status -q .status 2>/dev/null)"
-    if [ "$run_status" = "completed" ]; then
-      echo "ABORT: GitHub already marked this run completed (network loss?) while it kept running here -- refusing to publish, a rerun would risk a duplicate episode"
+    if [ "$run_status" != "in_progress" ]; then
+      echo "ABORT: cannot confirm this run is still live on GitHub (status '${run_status:-unreadable}') -- refusing to publish, a rerun would risk a duplicate episode"
+      failed=1; echo "::endgroup::"; continue
+    fi
+    # The job timeout kills the process tree wherever it is. Landing between
+    # the Publish click and the stub write leaves a live episode with no
+    # record and no log line. Do not start a publish that cannot finish.
+    if [ "$SECONDS" -gt $(( (${JOB_TIMEOUT_MIN:-90} - 15) * 60 )) ]; then
+      echo "ABORT: $((SECONDS/60)) min elapsed of a ${JOB_TIMEOUT_MIN:-90} min job -- too little left to publish safely; rerun the push"
       failed=1; echo "::endgroup::"; continue
     fi
   fi
 
   echo "[3/4] publish to spotify (no confirm)"
+  mkdir -p "$PODCAST/podcast-reports"
   run "/content-podcast-posting $id --backend spotify-cowork --yes-publish" \
-    || echo "posting stage errored"
+    2>&1 | tee "$PODCAST/podcast-reports/$id.posting.log" || echo "posting stage errored"
   kind="$(stub_type "$stub")"
-  [ -n "$kind" ] || { echo "NOT PUBLISHED (stub empty) -- no yml attached"; failed=1; echo "::endgroup::"; continue; }
+  if [ -z "$kind" ]; then
+    # The playbook's step-8 outcome: the Publish click went through but the
+    # share link could not be read back. Saying NOT PUBLISHED here invites a
+    # rerun and a duplicate; the recovery is a hand-written stub, not a rerun.
+    if grep -q 'STOP: episode published' "$PODCAST/podcast-reports/$id.posting.log"; then
+      echo "PUBLISHED, LINK UNCONFIRMED: $slug is live on Spotify but the stub is empty. Do NOT rerun. Copy the episode URL from the dashboard and run: python3 scripts/podcast_stub.py $stub --type spotify --url <url>, then push any edit to the post."
+    else
+      echo "NOT PUBLISHED (stub empty) -- no yml attached"
+    fi
+    failed=1; echo "::endgroup::"; continue
+  fi
   echo "published ($kind)"
+  fi   # not already published
 
   echo "[4/4] inject yml"
   python3 "$PODCAST/scripts/inject_podcast_frontmatter.py" "$SITE/$post" --stub "$stub" \
     || { echo "inject failed"; failed=1; echo "::endgroup::"; continue; }
-  git -C "$SITE" add "$post"
-  if git -C "$SITE" commit -qm "content: attach podcast to $slug [skip ci]" \
-     && git -C "$SITE" push -q origin "HEAD:$BRANCH"; then
+  commit_push() {
+    git -C "$SITE" add "$post" \
+      && git -C "$SITE" commit -qm "content: attach podcast to $slug [skip ci]" \
+      && git -C "$SITE" push -q origin "HEAD:$BRANCH"
+  }
+  # A blogger pushing during the 30-60 min this job runs makes the first push
+  # non-fast-forward. Take their branch head, put the yml on their version of
+  # the post, push again. Once: the stub keeps the link, and the next push to
+  # this post takes the "already published" path above.
+  if commit_push; then
     echo "DONE: $slug shipped with its podcast yml"
+  elif echo "        branch moved during the run; re-attaching on its new head" \
+       && git -C "$SITE" fetch -q origin "$BRANCH" && git -C "$SITE" reset -q --hard FETCH_HEAD \
+       && python3 "$PODCAST/scripts/inject_podcast_frontmatter.py" "$SITE/$post" --stub "$stub" \
+       && commit_push; then
+    echo "DONE: $slug shipped with its podcast yml (second attempt)"
   else
-    # The episode is live but the post does not reference it -- worth a red tick,
-    # since re-running would publish a duplicate rather than fix the frontmatter.
-    echo "PUBLISHED BUT NOT COMMITTED: $slug -- attach the yml by hand"
+    # The episode is live but the post does not reference it -- worth a red
+    # tick. The stub still holds the link, so the next push to this post
+    # injects it without publishing again.
+    echo "PUBLISHED BUT NOT COMMITTED: $slug -- push any edit to the post to attach the yml, or attach it by hand"
     failed=1
   fi
   echo "::endgroup::"

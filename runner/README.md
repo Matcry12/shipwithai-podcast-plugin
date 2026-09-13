@@ -56,5 +56,5 @@ LANG=en_US.UTF-8
 ```
 
 Keep that Chrome alive across reboots with `~/Library/LaunchAgents/podcast.chrome.plist`
-(`KeepAlive`, args `--remote-debugging-port=9222 --user-data-dir=$HOME/chrome-podcast`),
+(`KeepAlive`, args `--remote-debugging-port=9222 --user-data-dir=$HOME/podcast/chrome-profile`),
 then log into Spotify for Creators in it **once** — the profile persists.

@@ -26,6 +26,8 @@ bad()  { printf '  \033[31mFAIL\033[0m  %s\n         fix: %s\n' "$1" "$2"; fails
 warn() { printf '  \033[33mWARN\033[0m  %s\n         %s\n' "$1" "$2"; warns=$((warns+1)); }
 
 echo "== binaries =="
+b="$(command -v bash)"; v="$("$b" -c 'echo ${BASH_VERSINFO[0]}')"
+[ "$v" -ge 4 ] && ok "bash $v ($b)" || bad "bash $v at $b -- ci-podcast.sh needs >= 4" "brew install bash, and put /opt/homebrew/bin before /bin on the runner's PATH"
 for b in claude git python3 ffmpeg jq curl; do
   command -v "$b" >/dev/null && ok "$b" || bad "$b not on PATH" "install it, and make sure the runner's .env PATH includes it"
 done
@@ -82,7 +84,7 @@ if [ "$(uname)" = Darwin ]; then
   cdp="${BU_CDP_URL:-http://127.0.0.1:9222}"
   curl -fsS --max-time 3 "$cdp/json/version" >/dev/null 2>&1 \
     && ok "Chrome answering CDP at $cdp" \
-    || bad "no Chrome on $cdp" "open -a 'Google Chrome' --args --remote-debugging-port=9222 --user-data-dir=\$HOME/chrome-podcast, log into Spotify in it once, set BU_CDP_URL in ~/actions-runner/.env"
+    || bad "no Chrome on $cdp" "open -a 'Google Chrome' --args --remote-debugging-port=9222 --user-data-dir=\$HOME/podcast/chrome-profile, log into Spotify in it once, set BU_CDP_URL in ~/actions-runner/.env"
 elif [ -n "${DISPLAY:-}" ]; then
   ok "DISPLAY=$DISPLAY"
   [ -n "${XAUTHORITY:-}" ] && [ -f "${XAUTHORITY:-}" ] && ok "XAUTHORITY readable" \

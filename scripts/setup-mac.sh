@@ -30,6 +30,9 @@ sedi()    { if $MAC; then sed -i '' "$@"; else sed -i "$@"; fi; }
 step "tools"
 $MAC && ! have brew && { echo "Homebrew missing -- install from https://brew.sh then rerun"; exit 1; }
 for b in ffmpeg jq gh uv node python3; do have "$b" && echo "  ok $b" || install "$b"; done
+# ci-podcast.sh needs bash >= 4 (mapfile); macOS /bin/bash is 3.2. Homebrew's
+# bash wins because /opt/homebrew/bin precedes /bin on the runner's PATH.
+if $MAC; then [ -x /opt/homebrew/bin/bash ] && echo "  ok bash 5" || brew install bash; fi
 have claude && echo "  ok claude" || npm i -g @anthropic-ai/claude-code
 if $MAC; then [ -d "/Applications/Google Chrome.app" ] && echo "  ok chrome" || brew install --cask google-chrome; fi
 
