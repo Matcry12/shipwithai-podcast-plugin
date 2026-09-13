@@ -21,13 +21,18 @@ P="$HOME/podcast"
 step() { printf '\n\033[1m== %s ==\033[0m\n' "$1"; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-[ "$(uname)" = Darwin ] || { echo "this is the macOS bootstrap; on Linux see runner/README.md"; exit 1; }
+# Linux is supported only so the script can be tested for real on the writing
+# machine: no installs there (the runner-doctor names what is missing), GNU sed,
+# and no pmset.
+MAC=false; [ "$(uname)" = Darwin ] && MAC=true
+install() { if $MAC; then brew install "$@"; else echo "  MISSING $*: install it, then rerun"; exit 1; fi; }
+sedi()    { if $MAC; then sed -i '' "$@"; else sed -i "$@"; fi; }
 
 step "tools"
-have brew || { echo "Homebrew missing -- install from https://brew.sh then rerun"; exit 1; }
-for b in ffmpeg jq gh uv node python3; do have "$b" && echo "  ok $b" || brew install "$b"; done
+$MAC && ! have brew && { echo "Homebrew missing -- install from https://brew.sh then rerun"; exit 1; }
+for b in ffmpeg jq gh uv node python3; do have "$b" && echo "  ok $b" || install "$b"; done
 have claude && echo "  ok claude" || npm i -g @anthropic-ai/claude-code
-[ -d "/Applications/Google Chrome.app" ] && echo "  ok chrome" || brew install --cask google-chrome
+if $MAC; then [ -d "/Applications/Google Chrome.app" ] && echo "  ok chrome" || brew install --cask google-chrome; fi
 
 # The plugin repo is private, so cloning needs a GitHub login. gh handles the
 # credential and the clone; no SSH key to set up on this box.
@@ -59,12 +64,14 @@ HOME=$HOME
 LANG=en_US.UTF-8
 EOF
 
-step "never sleep (asks for your password)"
-sudo pmset -a sleep 0 disksleep 0 displaysleep 10 && echo "  ok pmset"
+if $MAC; then
+  step "never sleep (asks for your password)"
+  sudo pmset -a sleep 0 disksleep 0 displaysleep 10 && echo "  ok pmset"
+fi
 
 # .env voice paths still say /home/matcry after a copy; fix them if the file is here.
 if [ -f "$P/plugin/.env" ]; then
-  sed -i '' "s#/home/matcry/voice_lab/voices#$P/voices#g" "$P/plugin/.env"
+  sedi "s#/home/matcry/voice_lab/voices#$P/voices#g" "$P/plugin/.env"
   echo "  ok .env voice paths -> $P/voices"
 fi
 
