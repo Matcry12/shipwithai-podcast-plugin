@@ -27,10 +27,11 @@ PODCAST="${PODCAST_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 # below, would still pick it up).
 set -a; . "$PODCAST/.env" 2>/dev/null; set +a
 
-# Drafts are written by the CONTENT plugin, not this one, and are gitignored
-# there -- so they arrive by neither git nor this repo. Point DRAFTS_DIR at
-# whatever directory holds them on this machine.
-DRAFTS="${DRAFTS_DIR:-$HOME/Developer/shipwithai-content-agent-plugin/drafts}"
+# The render skill wants its input as drafts/<slug>--<locale>.md (the locale
+# suffix is how it picks the voice pair). The post in the checkout is that same
+# file under the site's naming, so it is copied into place per run -- no second
+# copy of the content has to be kept in sync on the runner.
+DRAFTS="$PODCAST/drafts"
 BRANCH="${BRANCH:?BRANCH not set}"
 BEFORE="${BEFORE:?}"; AFTER="${AFTER:?}"
 PERM_MODE="${DEMO_PERM_MODE:-bypassPermissions}"
@@ -151,15 +152,7 @@ for post in "${todo[@]}"; do
   # filter above is the second, because [skip ci] is one careless edit away from
   # a publish storm and a duplicate episode is unrecallable.
   #
-  # Drafts live in the content plugin and are gitignored there, so a post can
-  # arrive by git while its draft never does. A warning, not a failure: most
-  # legacy posts have no draft at all, and a typo fix on one of them must not
-  # turn the run red (observed 2026-09-13). The yellow annotation is still how
-  # a runner with DRAFTS_DIR unset or the drafts never copied gets noticed.
-  if [ ! -f "$draft" ]; then
-    echo "::warning::$id skipped: no draft at $draft on this runner (legacy post, or DRAFTS_DIR not set / drafts not copied)"
-    echo "::endgroup::"; continue
-  fi
+  mkdir -p "$DRAFTS" && cp "$SITE/$post" "$draft"
 
   # Render -> review, retried on a non-ship verdict. The script is authored by an
   # LLM each pass, so a `regenerate` is routine rather than exceptional -- the

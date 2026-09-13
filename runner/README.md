@@ -50,7 +50,6 @@ unattended runs on Linux:
 ```
 PATH=/Users/<you>/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
 PODCAST_REPO=/Users/<you>/Developer/shipwithai-podcast-plugin
-DRAFTS_DIR=/Users/<you>/Developer/shipwithai-content-agent-plugin/drafts
 BU_CDP_URL=http://127.0.0.1:9222
 HOME=/Users/<you>
 LANG=en_US.UTF-8

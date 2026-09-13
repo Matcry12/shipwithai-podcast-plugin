@@ -49,8 +49,6 @@ The workflow that calls it lives in the site repo, not here.
 
 ## Inputs from elsewhere
 
-- **Drafts** — written by `shipwithai-content-agent-plugin` and gitignored there.
-  Set `DRAFTS_DIR`; the default assumes both repos sit side by side.
 - **Voice clips** — reference `.wav` files for voice cloning, stored outside both
   repos. Without them EN falls back to preset voices.
 - **Render server** — `PODCAST_URL` / `PODCAST_TOKEN`.

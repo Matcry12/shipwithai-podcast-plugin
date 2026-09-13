@@ -21,11 +21,10 @@ separately, so it can pass `--yes-publish`. See `scripts/ci-podcast.sh`.
 
 ## Inputs this repo does not own
 
-`drafts/` lives in the **content plugin** and is gitignored there, so it arrives
-by neither git nor a clone of this repo. Every entry point reads `DRAFTS_DIR`,
-defaulting to `~/Developer/shipwithai-content-agent-plugin/drafts`. A run that
-reports `BLOCKED` almost always means that path is wrong or the draft was never
-copied to this machine.
+In CI the input is the blog post itself: `ci-podcast.sh` copies it from the
+site checkout into `drafts/<slug>--<locale>.md`, the shape `/content-podcast`
+expects. Nothing about the post's content has to exist on the runner ahead of
+time. (Running the command by hand still takes any file of that shape.)
 
 Voice clips (`PODCAST_EN_VOICE` etc.) live outside both repos. Without them EN
 silently falls back to kokoro presets — the episodes still render, they just

@@ -12,12 +12,11 @@ set -uo pipefail
 
 PODCAST="${PODCAST_REPO:-$(cd "$(dirname "$0")/.." && pwd)}"
 
-# Sourced here, before DRAFTS/SITE below take their ${VAR:-default} -- see the
+# Sourced here, before SITE below takes its ${VAR:-default} -- see the
 # matching note in ci-podcast.sh. Otherwise this doctor would validate the
 # hardcoded fallback paths instead of whatever .env actually configures.
 set -a; . "$PODCAST/.env" 2>/dev/null; set +a
 
-DRAFTS="${DRAFTS_DIR:-$HOME/Developer/shipwithai-content-agent-plugin/drafts}"
 SITE="${SITE_REPO:-$HOME/Developer/shipwithai.io}"
 fails=0
 warns=0
@@ -48,14 +47,6 @@ echo "== repos =="
   || bad "podcast repo not found at $PODCAST" "clone it, then set PODCAST_REPO in ~/actions-runner/.env"
 [ -d "$SITE/src/content/blog" ] && ok "site repo at $SITE" \
   || warn "site repo not at $SITE" "only needed for local runs; CI checks it out itself"
-
-# The one that catches people out. drafts/ is gitignored, so it exists only on
-# the machine that wrote it -- a fresh box clones the plugin and gets none.
-echo
-echo "== drafts (gitignored -- they do NOT arrive by git) =="
-n=$(ls "$DRAFTS"/*.md 2>/dev/null | wc -l)
-if [ "$n" -gt 0 ]; then ok "$n draft(s) in $DRAFTS"
-else bad "no drafts at $DRAFTS" "drafts are written by the content plugin and gitignored there; point DRAFTS_DIR at them or every run reports BLOCKED"; fi
 
 echo
 echo "== render server =="
