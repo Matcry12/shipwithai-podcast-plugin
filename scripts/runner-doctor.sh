@@ -81,10 +81,10 @@ if [ "$(uname)" = Darwin ]; then
   # No X here; browser-harness reaches Chrome over CDP. A dedicated Chrome
   # launched with --remote-debugging-port never shows the "Allow remote
   # debugging?" popup that stalled unattended runs on the Linux box.
-  cdp="${BU_CDP_URL:-http://127.0.0.1:9222}"
+  cdp="${BU_CDP_URL:-http://127.0.0.1:9333}"
   curl -fsS --max-time 3 "$cdp/json/version" >/dev/null 2>&1 \
     && ok "Chrome answering CDP at $cdp" \
-    || bad "no Chrome on $cdp" "open -a 'Google Chrome' --args --remote-debugging-port=9222 --user-data-dir=\$HOME/podcast/chrome-profile, log into Spotify in it once, set BU_CDP_URL in ~/actions-runner/.env"
+    || bad "no Chrome on $cdp" "open -a 'Google Chrome' --args --remote-debugging-port=9333 --user-data-dir=\$HOME/podcast/chrome-profile, log into Spotify in it once, set BU_CDP_URL in ~/actions-runner/.env"
 elif [ -n "${DISPLAY:-}" ]; then
   ok "DISPLAY=$DISPLAY"
   [ -n "${XAUTHORITY:-}" ] && [ -f "${XAUTHORITY:-}" ] && ok "XAUTHORITY readable" \

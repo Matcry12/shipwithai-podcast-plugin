@@ -1,5 +1,5 @@
 [Unit]
-Description=Dedicated Chrome for the podcast publish stage (CDP on 9222, own profile)
+Description=Dedicated Chrome for the podcast publish stage (CDP on 9333, own profile)
 # Launched with the debugging port so browser-harness attaches without the
 # "Allow remote debugging?" popup that Chrome 144+ shows on EVERY attach to a
 # normal profile (clicking Allow never sticks). Own profile: the pipeline
@@ -8,7 +8,7 @@ Description=Dedicated Chrome for the podcast publish stage (CDP on 9222, own pro
 After=graphical-session.target
 
 [Service]
-ExecStart=/usr/bin/google-chrome --remote-debugging-port=9222 --user-data-dir=%h/podcast-chrome --no-first-run --window-size=1400,900 https://creators.spotify.com/home/show/
+ExecStart=/usr/bin/google-chrome --remote-debugging-port=9333 --user-data-dir=%h/podcast-chrome --no-first-run --window-size=1400,900 https://creators.spotify.com/home/show/
 Restart=always
 RestartSec=5
 Environment=DISPLAY=:0

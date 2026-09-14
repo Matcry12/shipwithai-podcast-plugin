@@ -61,7 +61,7 @@ mkdir -p "$P/runner"
 PATH=$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
 PODCAST_REPO=$P/plugin
 BU_NAME=podcast
-BU_CDP_URL=http://127.0.0.1:9222
+BU_CDP_URL=http://127.0.0.1:9333
 HOME=$HOME
 LANG=en_US.UTF-8
 EOF
@@ -85,11 +85,11 @@ DONE with the automatic part. Three things need YOU:
        voices/*.wav -> $P/voices/      .env -> $P/plugin/.env
      then run this script once more so it fixes the voice paths inside .env
   2. claude           (type /login, finish in the browser, then /exit)
-  3. open -a "Google Chrome" --args --remote-debugging-port=9222 --user-data-dir=$P/chrome-profile
+  3. open -a "Google Chrome" --args --remote-debugging-port=9333 --user-data-dir=$P/chrome-profile
      -> log into creators.spotify.com/home in that window, leave it open
 
 Then check:
-  cd $P/plugin && RUNNER_DIR=$P/runner BU_CDP_URL=http://127.0.0.1:9222 bash scripts/runner-doctor.sh
+  cd $P/plugin && RUNNER_DIR=$P/runner BU_CDP_URL=http://127.0.0.1:9333 bash scripts/runner-doctor.sh
 
 Then register the runner (fresh token from the repo admin: New self-hosted runner -> macOS -> ARM64):
   cd $P/runner && <paste GitHub's curl + tar lines> && ./config.sh --url ... --token ... --labels podcast

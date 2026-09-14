@@ -51,13 +51,13 @@ unattended runs on Linux:
 PATH=/Users/<you>/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
 PODCAST_REPO=/Users/<you>/Developer/shipwithai-podcast-plugin
 BU_NAME=podcast
-BU_CDP_URL=http://127.0.0.1:9222
+BU_CDP_URL=http://127.0.0.1:9333
 HOME=/Users/<you>
 LANG=en_US.UTF-8
 ```
 
 Keep that Chrome alive across reboots with `~/Library/LaunchAgents/podcast.chrome.plist`
-(`KeepAlive`, args `--remote-debugging-port=9222 --user-data-dir=$HOME/podcast/chrome-profile`),
+(`KeepAlive`, args `--remote-debugging-port=9333 --user-data-dir=$HOME/podcast/chrome-profile`),
 then log into Spotify for Creators in it **once** — the profile persists.
 
 ## Linux: the same dedicated Chrome
@@ -77,5 +77,5 @@ Log into Spotify for Creators in the window it opens, once. Then add to
 
 ```
 BU_NAME=podcast
-BU_CDP_URL=http://127.0.0.1:9222
+BU_CDP_URL=http://127.0.0.1:9333
 ```
