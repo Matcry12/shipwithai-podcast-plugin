@@ -87,7 +87,6 @@ if $MAC; then
     <string>--user-data-dir=$P/chrome-profile</string>
     <string>--no-first-run</string>
     <string>--window-size=1400,900</string>
-    <string>https://creators.spotify.com/home/show/</string>
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

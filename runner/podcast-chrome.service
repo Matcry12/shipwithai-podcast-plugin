@@ -8,7 +8,7 @@ Description=Dedicated Chrome for the podcast publish stage (CDP on 9333, own pro
 After=graphical-session.target
 
 [Service]
-ExecStart=/usr/bin/google-chrome --remote-debugging-port=9333 --user-data-dir=%h/podcast-chrome --no-first-run --window-size=1400,900 https://creators.spotify.com/home/show/
+ExecStart=/usr/bin/google-chrome --remote-debugging-port=9333 --user-data-dir=%h/podcast-chrome --no-first-run --window-size=1400,900
 Restart=always
 RestartSec=5
 Environment=DISPLAY=:0
