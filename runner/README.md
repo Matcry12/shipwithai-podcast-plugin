@@ -50,6 +50,7 @@ unattended runs on Linux:
 ```
 PATH=/Users/<you>/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
 PODCAST_REPO=/Users/<you>/Developer/shipwithai-podcast-plugin
+BU_NAME=podcast
 BU_CDP_URL=http://127.0.0.1:9222
 HOME=/Users/<you>
 LANG=en_US.UTF-8
@@ -58,3 +59,23 @@ LANG=en_US.UTF-8
 Keep that Chrome alive across reboots with `~/Library/LaunchAgents/podcast.chrome.plist`
 (`KeepAlive`, args `--remote-debugging-port=9222 --user-data-dir=$HOME/podcast/chrome-profile`),
 then log into Spotify for Creators in it **once** — the profile persists.
+
+## Linux: the same dedicated Chrome
+
+Chrome 144+ shows "Allow remote debugging?" on every attach to a normal
+profile; Allow never sticks. `podcast-chrome.service` launches a separate
+Chrome with the port flag (no popup) and its own profile (the pipeline stops
+driving the Chrome you work in):
+
+```bash
+cp runner/podcast-chrome.service ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now podcast-chrome
+```
+
+Log into Spotify for Creators in the window it opens, once. Then add to
+`~/actions-runner/.env` and restart the runner service:
+
+```
+BU_NAME=podcast
+BU_CDP_URL=http://127.0.0.1:9222
+```

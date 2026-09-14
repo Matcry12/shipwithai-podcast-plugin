@@ -60,6 +60,7 @@ mkdir -p "$P/runner"
 [ -f "$P/runner/.env" ] && echo "  ok $P/runner/.env" || cat > "$P/runner/.env" <<EOF
 PATH=$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
 PODCAST_REPO=$P/plugin
+BU_NAME=podcast
 BU_CDP_URL=http://127.0.0.1:9222
 HOME=$HOME
 LANG=en_US.UTF-8
