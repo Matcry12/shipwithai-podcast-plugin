@@ -25,6 +25,25 @@ silently until someone looked.
 `scripts/setup-mac.sh` does everything below except the logins and the runner
 token; the rest of this section is what it automates.
 
+Or let Claude drive the script. By hand first (each needs your password or a
+browser): install Homebrew, `brew install gh && gh auth login`,
+`curl -fsSL https://claude.ai/install.sh | bash && claude` then `/login`. Then
+paste into that `claude` session:
+
+```
+Set this Mac up as the podcast CI runner. Download and run
+https://raw.githubusercontent.com/Matcry12/shipwithai-podcast-plugin/master/scripts/setup-mac.sh
+(download first, then `bash setup-mac.sh`; it is safe to rerun). Fix anything it
+reports missing. When it prints the three manual items: ask me to copy voices/ and
+.env from the writing machine, then rerun the script so it fixes the voice paths.
+Run the doctor it prints and fix every red line. Then ask me for a runner
+registration token (GitHub -> Settings -> Actions -> Runners -> New self-hosted
+runner -> macOS -> ARM64), install the runner into ~/podcast/runner with
+`--labels podcast --unattended`, run `./svc.sh install && ./svc.sh start`, and
+confirm `./svc.sh status` says running. Never type any password for me; when a
+login is needed (Spotify in the dedicated Chrome on port 9333) stop and tell me.
+```
+
 No systemd. The runner's own `svc.sh` installs a **LaunchAgent** here (not a
 system daemon), which already runs inside the logged-in GUI session — so use it:
 
