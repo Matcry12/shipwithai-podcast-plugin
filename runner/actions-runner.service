@@ -16,7 +16,9 @@ ExecStart=%h/actions-runner/run.sh
 Restart=always
 RestartSec=10
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
-KillMode=process
+# control-group (default): stop means stop. KillMode=process left Runner.Listener
+# orphaned and still taking jobs after "systemctl stop" (observed 2026-09-14).
+KillMode=control-group
 
 [Install]
 WantedBy=default.target
