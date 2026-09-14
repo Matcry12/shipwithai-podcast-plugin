@@ -67,6 +67,35 @@ LANG=en_US.UTF-8
 EOF
 
 if $MAC; then
+  # The publish stage drives THIS Chrome: launched with the debugging port (so
+  # no "Allow remote debugging?" popup, ever) on its own profile (so it never
+  # touches a Chrome someone is using). KeepAlive brings it back after a crash
+  # or reboot. Log into Spotify for Creators in it once; the profile persists.
+  step "dedicated chrome (launchd, port 9333)"
+  PL="$HOME/Library/LaunchAgents/podcast.chrome.plist"
+  mkdir -p "$HOME/Library/LaunchAgents"
+  if [ -f "$PL" ]; then echo "  ok $PL"; else
+    cat > "$PL" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>podcast.chrome</string>
+  <key>ProgramArguments</key><array>
+    <string>/Applications/Google Chrome.app/Contents/MacOS/Google Chrome</string>
+    <string>--remote-debugging-port=9333</string>
+    <string>--remote-allow-origins=*</string>
+    <string>--user-data-dir=$P/chrome-profile</string>
+    <string>--no-first-run</string>
+    <string>--window-size=1400,900</string>
+    <string>https://creators.spotify.com/home/show/</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+</dict></plist>
+EOF
+    launchctl load "$PL" && echo "  started"
+  fi
+
   step "never sleep (asks for your password)"
   sudo pmset -a sleep 0 disksleep 0 displaysleep 10 && echo "  ok pmset"
 fi
@@ -85,8 +114,9 @@ DONE with the automatic part. Three things need YOU:
        voices/*.wav -> $P/voices/      .env -> $P/plugin/.env
      then run this script once more so it fixes the voice paths inside .env
   2. claude           (type /login, finish in the browser, then /exit)
-  3. open -a "Google Chrome" --args --remote-debugging-port=9333 --user-data-dir=$P/chrome-profile
-     -> log into creators.spotify.com/home in that window, leave it open
+  3. a Chrome window titled with the Spotify login just opened (the dedicated one,
+     port 9333) -> log into Spotify for Creators in it, once. Leave it open; it
+     comes back by itself after a reboot.
 
 Then check:
   cd $P/plugin && RUNNER_DIR=$P/runner BU_CDP_URL=http://127.0.0.1:9333 bash scripts/runner-doctor.sh
