@@ -24,6 +24,11 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # machine: no installs there (the runner-doctor names what is missing), GNU sed,
 # and no pmset.
 MAC=false; [ "$(uname)" = Darwin ] && MAC=true
+# An x64 GitHub runner on Apple Silicon starts every job under Rosetta, and
+# `brew install` refuses to run there. Re-exec native.
+if $MAC && [ "$(uname -m)" = x86_64 ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = 1 ]; then
+  exec arch -arm64 /bin/bash "$0" "$@"
+fi
 install() { if $MAC; then brew install "$@"; else echo "  MISSING $*: install it, then rerun"; exit 1; fi; }
 sedi()    { if $MAC; then sed -i '' "$@"; else sed -i "$@"; fi; }
 
