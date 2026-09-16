@@ -51,10 +51,13 @@ mkdir -p "$P"
 have browser-harness && echo "  ok browser-harness on PATH" \
   || (cd "$P/browser-harness" && uv tool install -e . && uv tool update-shell)
 
+# On a shared Mac, CLAUDE_CONFIG_DIR=~/podcast/claude (set by the workflows)
+# keeps this file, and claude's session logs, out of someone else's ~/.claude.
 step "claude knows the browser tool"
-mkdir -p "$HOME/.claude"
-grep -qs "browser-harness/SKILL.md" "$HOME/.claude/CLAUDE.md" && echo "  ok" \
-  || printf '# browser-harness\n@~/podcast/browser-harness/SKILL.md\n' >> "$HOME/.claude/CLAUDE.md"
+CC="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+mkdir -p "$CC"
+grep -qs "browser-harness/SKILL.md" "$CC/CLAUDE.md" && echo "  ok $CC/CLAUDE.md" \
+  || printf '# browser-harness\n@~/podcast/browser-harness/SKILL.md\n' >> "$CC/CLAUDE.md"
 
 step "runner settings"
 mkdir -p "$P/runner"
@@ -67,7 +70,9 @@ HOME=$HOME
 LANG=en_US.UTF-8
 EOF
 
-if $MAC; then
+# SKIP_CHROME=1: everything except the dedicated Chrome, for a first pass with
+# nobody at the screen. Run again without it when someone can log into Spotify.
+if $MAC && [ -z "${SKIP_CHROME:-}" ]; then
   # The publish stage drives THIS Chrome: launched with the debugging port (so
   # no "Allow remote debugging?" popup, ever) on its own profile (so it never
   # touches a Chrome someone is using). KeepAlive brings it back after a crash
