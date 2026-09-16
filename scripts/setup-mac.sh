@@ -36,15 +36,16 @@ if $MAC; then [ -x /opt/homebrew/bin/bash ] && echo "  ok bash 5" || brew instal
 have claude && echo "  ok claude" || npm i -g @anthropic-ai/claude-code
 if $MAC; then [ -d "/Applications/Google Chrome.app" ] && echo "  ok chrome" || brew install --cask google-chrome; fi
 
-# The plugin repo is private, so cloning needs a GitHub login. gh handles the
-# credential and the clone; no SSH key to set up on this box.
+# gh only needs a login for the runner token later; skip when there is no
+# keyboard (a GitHub Actions job driving this script).
 step "github login"
-gh auth status >/dev/null 2>&1 && echo "  ok gh" || gh auth login --hostname github.com --git-protocol https --web
+gh auth status >/dev/null 2>&1 && echo "  ok gh" \
+  || { [ -t 0 ] && gh auth login --hostname github.com --git-protocol https --web || echo "  skipped (no tty)"; }
 
 step "code under $P"
 mkdir -p "$P"
 [ -d "$P/plugin/.git" ] && echo "  ok plugin" \
-  || gh repo clone Matcry12/shipwithai-podcast-plugin "$P/plugin"
+  || git clone https://github.com/Matcry12/shipwithai-podcast-plugin "$P/plugin"
 [ -d "$P/browser-harness/.git" ] && echo "  ok browser-harness" \
   || git clone https://github.com/browser-use/browser-harness "$P/browser-harness"
 have browser-harness && echo "  ok browser-harness on PATH" \
@@ -96,7 +97,8 @@ EOF
   fi
 
   step "never sleep (asks for your password)"
-  sudo pmset -a sleep 0 disksleep 0 displaysleep 10 && echo "  ok pmset"
+  if [ -t 0 ]; then sudo pmset -a sleep 0 disksleep 0 displaysleep 10 && echo "  ok pmset"
+  else echo "  skipped (no tty): run on the Mac once:  sudo pmset -a sleep 0 disksleep 0 displaysleep 10"; fi
 fi
 
 # .env voice paths still say /home/matcry after a copy; fix them if the file is here.
@@ -112,7 +114,9 @@ DONE with the automatic part. Three things need YOU:
   1. copy from the writing machine (any way you like):
        voices/*.wav -> $P/voices/      .env -> $P/plugin/.env
      then run this script once more so it fixes the voice paths inside .env
-  2. claude           (type /login, finish in the browser, then /exit)
+  2. claude: on your PC run \`claude setup-token\`, then
+       gh secret set CLAUDE_CODE_OAUTH_TOKEN -R <site repo>
+     (the workflows pass it to every job; no login on this box needed)
   3. a Chrome window titled with the Spotify login just opened (the dedicated one,
      port 9333) -> log into Spotify for Creators in it, once. Leave it open; it
      comes back by itself after a reboot.
