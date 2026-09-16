@@ -26,6 +26,44 @@
 - The PC runner (`matcry-b460mds3h`) is also online. Jobs meant for the Mac use `runs-on: [self-hosted, macOS]`.
 - `PODCAST_URL` in `.env` is a LAN address of the render host. The Mac must sit on that LAN (or the host gets a routable/tailnet address) — no task here can fix that.
 
+## Expected tree on the Mac when done
+
+```
+/Users/minigala/
+├── podcast/                          <- Task 3 creates; `rm -rf` removes all of it
+│   ├── plugin/                       git clone Matcry12/shipwithai-podcast-plugin (master)
+│   │   ├── .env                      Task 4, scp from PC, voice paths rewritten
+│   │   ├── scripts/                  ci-podcast.sh, runner-doctor.sh, setup-mac.sh
+│   │   ├── drafts/                   per run, gitignored
+│   │   ├── podcasts/                 rendered mp3+json, gitignored
+│   │   └── podcast-reports/          critic reports, gitignored
+│   ├── browser-harness/              git clone browser-use/browser-harness
+│   ├── voices/*.wav                  Task 4, scp from PC
+│   ├── chrome-profile/               Task 5, created by the dedicated Chrome
+│   └── runner/.env                   setup-mac.sh writes it; inert if the runner lives elsewhere
+├── Library/LaunchAgents/
+│   ├── podcast.chrome.plist          Task 5 (only with the human present)
+│   └── actions.runner.*.plist        already there -- the runner, untouched
+├── .claude/CLAUDE.md                 +1 line: @~/podcast/browser-harness/SKILL.md
+└── .local/bin/browser-harness        Task 3, uv tool install
+
+/opt/homebrew/bin/{bash,uv,jq,node,python3}   Task 3 -- only the ones missing (recon tells)
+<runner root>/_work/shipwithai.io/            site checkout, made by podcast.yml itself
+```
+
+## Progress
+
+| Task | State | Evidence |
+|---|---|---|
+| 1 mac.yml | pending | |
+| 2 recon | pending | |
+| 3 tools+clones | pending | |
+| 4 voices+.env | pending | |
+| 5 doctor+Chrome | pending | |
+| 6 podcast.yml | pending | |
+| 7 real post | pending | |
+| 8 tidy | pending | |
+
 ---
 
 ### Task 0: Rollback card (read before anything)
