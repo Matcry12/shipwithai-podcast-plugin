@@ -60,7 +60,7 @@
 | 2 recon | done | run 35107100696, see *Recon result*. Decisions: D1–D4 below. |
 | 3 tools+clones | done | run 35108150281 `setup exit=0`. brew: bash 5.3.20, uv (+deps gettext json-c libunistring ncurses). `~/podcast/{plugin,browser-harness,runner,claude}`. `~/.local/bin/browser-harness`. Roommate `~/.claude/CLAUDE.md` untouched (grep -c = 0). Two failed attempts first: brew refuses installs under Rosetta (script now re-execs arm64, 452930b) and raw.githubusercontent cached the old master (pin commit hashes). |
 | 4 voices+.env | done (deviation) | run 35111532786. User chose: clips committed to the public plugin repo (`voices/`, 9fd0e40) instead of scp; `.env` from repo secret `PODCAST_ENV` via `mac.yml` env. 4 clips present, .env 50 lines, voice paths resolve. |
-| 5 doctor+Chrome | pending | |
+| 5 doctor+Chrome | step 1 done, waiting for human | run 35111653853: all OK except `display FAIL no Chrome on :9333` (expected). Render server reachable from the Mac LAN. `.env` chmod 600. Chrome dispatch waits for someone at the Mac. |
 | 6 podcast.yml | pending | |
 | 7 real post | pending | |
 | 8 tidy | pending | |
