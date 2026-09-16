@@ -16,8 +16,8 @@
 - **Footprint ledger** — everything we are allowed to create on the Mac:
   - `~/podcast/` (plugin, browser-harness, voices, chrome-profile, `.env`) — one folder, `rm -rf ~/podcast` removes it all.
   - `~/Library/LaunchAgents/podcast.chrome.plist` — the dedicated Chrome. `launchctl unload` + `rm` removes it.
-  - Homebrew packages: `bash`, `uv`, `jq`, `node`, `python3` (+ whatever is already there: `ffmpeg`, `gh`, `claude-code`, Google Chrome). Shared with the roommate; each is `brew uninstall`-able. **Never `brew upgrade` blanket; only named packages.**
-  - One line in `~/.claude/CLAUDE.md` (`@~/podcast/browser-harness/SKILL.md`).
+  - Homebrew packages: `bash`, `uv` (D3; + whatever is already there: `ffmpeg`, `gh`, `claude-code`, Google Chrome). Shared with the roommate; each is `brew uninstall`-able. **Never `brew upgrade` blanket; only named packages.**
+  - ~~One line in `~/.claude/CLAUDE.md`~~ -> D1: claude config lives in `~/podcast/claude/` via `CLAUDE_CONFIG_DIR`; the roommate's `~/.claude` is never written.
   - Already touched before this plan: `brew upgrade --cask claude-code` (2.1.118 → 2.1.267) on 2026-09-16.
 - **Not by a job, ever:** `sudo pmset`, `gh auth login`, Spotify login, changing runner labels, restarting the runner, `--yes-publish` outside `ci-podcast.sh`.
 - **Secrets never land on the Mac's disk** except `~/podcast/plugin/.env` (already gitignored, copied by the human over SSH). The Claude token stays a GitHub secret.
@@ -44,7 +44,7 @@
 ├── Library/LaunchAgents/
 │   ├── podcast.chrome.plist          Task 5 (only with the human present)
 │   └── actions.runner.*.plist        already there -- the runner, untouched
-├── .claude/CLAUDE.md                 +1 line: @~/podcast/browser-harness/SKILL.md
+│   └── claude/CLAUDE.md              D1: claude's config dir for jobs (CLAUDE_CONFIG_DIR)
 └── .local/bin/browser-harness        Task 3, uv tool install
 
 /opt/homebrew/bin/{bash,uv,jq,node,python3}   Task 3 -- only the ones missing (recon tells)
@@ -55,8 +55,8 @@
 
 | Task | State | Evidence |
 |---|---|---|
-| 1 mac.yml | pending | |
-| 2 recon | pending | |
+| 1 mac.yml | done | run 35106905402: `ok-from-minigala-4.local`, `minigala`. Needed a self-registering push trigger (commit on demo/podcast-auto). |
+| 2 recon | done | run 35107100696, see *Recon result*. Decisions: D1–D4 below. |
 | 3 tools+clones | pending | |
 | 4 voices+.env | pending | |
 | 5 doctor+Chrome | pending | |
@@ -74,7 +74,7 @@ Keep this in the log of the session. If any task leaves the Mac in a state we do
 launchctl unload ~/Library/LaunchAgents/podcast.chrome.plist 2>/dev/null; rm -f ~/Library/LaunchAgents/podcast.chrome.plist
 rm -rf ~/podcast
 sed -i '' '/browser-harness\/SKILL.md/d' ~/.claude/CLAUDE.md 2>/dev/null
-brew uninstall bash uv jq node python3 2>/dev/null   # ONLY the ones Task 3 reported it installed
+brew uninstall bash uv 2>/dev/null   # D3: the only two Task 3 installs
 ls ~/podcast ~/Library/LaunchAgents/podcast.chrome.plist 2>&1
 ```
 
@@ -367,6 +367,26 @@ Expected: `[1/4]`…`[4/4]`, verdict `ship`, one `published`, the `[skip ci]` co
 
 ---
 
-## Recon result (Task 2 output goes here)
+## Recon result (2026-09-16, run 35107100696)
 
-_(empty until Task 2 runs)_
+```
+runner root   /Users/minigala/Documents/Mangala/actions-runner   (runner 2.337.0; .runner has no labels field any more)
+~/podcast     does not exist
+LaunchAgents  ai.openclaw.gateway, com.google.*, com.trycua.lume_daemon   (all the roommate's; port 9333 free)
+brew 7.0.2    formulae incl. ffmpeg gh node@22 python@3.11 coreutils imagemagick cloudflared; casks android-cli claude-code stats
+tools         bash=/bin/bash(3.2)  uv=MISSING  jq=/usr/bin/jq  node=/opt/homebrew/bin/node  python3=/usr/bin/python3
+              ffmpeg ok  gh ok  claude=/opt/homebrew/bin/claude (2.1.267)  browser-harness=MISSING
+/opt/homebrew/bin/bash   missing
+gh auth       logged in as linhvnguyen9  (the roommate's GitHub account)
+Chrome        /Applications/Google Chrome.app present
+disk          156 GiB free
+~/.claude/CLAUDE.md   exists, the roommate's own content ("Tool discipline" rules)
+arch          Apple M4, but the job runs as x86_64 -- the runner is the x64 build under Rosetta
+```
+
+### Decisions from recon
+
+- **D1 — `~/.claude` is the roommate's. Do not write to it.** Jobs set `CLAUDE_CONFIG_DIR=/Users/minigala/podcast/claude` (in `mac.yml` and `podcast.yml` env), so claude's memory file, settings and session transcripts all live under `~/podcast/`. `setup-mac.sh` writes its one import line to `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md`. (The three hello runs already left session files under the roommate's `~/.claude/projects/`; harmless, noted.) Ledger updated: the `~/.claude/CLAUDE.md` line is **out**, `~/podcast/claude/` is **in**.
+- **D2 — `gh` on the Mac is the roommate's login.** `podcast.yml` sets `GH_TOKEN`, which `gh` prefers over the keyring, so CI never acts as them. `mac.yml` dispatches must not call `gh` for anything but `gh auth status`.
+- **D3 — Task 3 will install exactly two brew formulae: `bash`, `uv`.** jq/node/python3 are already present (system or brew). Rollback card updated accordingly.
+- **D4 — Rosetta.** The runner is the x64 build on an M4; every job is an x86_64 process. Homebrew re-execs itself as arm64 (it already upgraded claude fine) and macOS execs arm64 binaries from x86 shells, so nothing to do. If a native tool ever misbehaves, the fix is re-registering the arm64 runner -- a human task, not ours.
