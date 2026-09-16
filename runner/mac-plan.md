@@ -59,7 +59,7 @@
 | 1 mac.yml | done | run 35106905402: `ok-from-minigala-4.local`, `minigala`. Needed a self-registering push trigger (commit on demo/podcast-auto). |
 | 2 recon | done | run 35107100696, see *Recon result*. Decisions: D1–D4 below. |
 | 3 tools+clones | done | run 35108150281 `setup exit=0`. brew: bash 5.3.20, uv (+deps gettext json-c libunistring ncurses). `~/podcast/{plugin,browser-harness,runner,claude}`. `~/.local/bin/browser-harness`. Roommate `~/.claude/CLAUDE.md` untouched (grep -c = 0). Two failed attempts first: brew refuses installs under Rosetta (script now re-execs arm64, 452930b) and raw.githubusercontent cached the old master (pin commit hashes). |
-| 4 voices+.env | pending | |
+| 4 voices+.env | done (deviation) | run 35111532786. User chose: clips committed to the public plugin repo (`voices/`, 9fd0e40) instead of scp; `.env` from repo secret `PODCAST_ENV` via `mac.yml` env. 4 clips present, .env 50 lines, voice paths resolve. |
 | 5 doctor+Chrome | pending | |
 | 6 podcast.yml | pending | |
 | 7 real post | pending | |
