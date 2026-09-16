@@ -14,7 +14,8 @@
 
 - **It is a roommate's computer.** Footprint is limited to the ledger below. Nothing under `/`, `/etc`, `/Library`, no sudo, no system settings, no login items other than the two listed.
 - **Footprint ledger** — everything we are allowed to create on the Mac:
-  - `~/podcast/` (plugin, browser-harness, voices, chrome-profile, `.env`) — one folder, `rm -rf ~/podcast` removes it all.
+  - `~/podcast/` (plugin, browser-harness, voices, chrome-profile, claude, `.env`) — one folder, `rm -rf ~/podcast` removes it all.
+  - `~/.local/bin/browser-harness` + `~/.local/share/uv/tools/browser-harness` (uv tool install).
   - `~/Library/LaunchAgents/podcast.chrome.plist` — the dedicated Chrome. `launchctl unload` + `rm` removes it.
   - Homebrew packages: `bash`, `uv` (D3; + whatever is already there: `ffmpeg`, `gh`, `claude-code`, Google Chrome). Shared with the roommate; each is `brew uninstall`-able. **Never `brew upgrade` blanket; only named packages.**
   - ~~One line in `~/.claude/CLAUDE.md`~~ -> D1: claude config lives in `~/podcast/claude/` via `CLAUDE_CONFIG_DIR`; the roommate's `~/.claude` is never written.
@@ -57,7 +58,7 @@
 |---|---|---|
 | 1 mac.yml | done | run 35106905402: `ok-from-minigala-4.local`, `minigala`. Needed a self-registering push trigger (commit on demo/podcast-auto). |
 | 2 recon | done | run 35107100696, see *Recon result*. Decisions: D1–D4 below. |
-| 3 tools+clones | pending | |
+| 3 tools+clones | done | run 35108150281 `setup exit=0`. brew: bash 5.3.20, uv (+deps gettext json-c libunistring ncurses). `~/podcast/{plugin,browser-harness,runner,claude}`. `~/.local/bin/browser-harness`. Roommate `~/.claude/CLAUDE.md` untouched (grep -c = 0). Two failed attempts first: brew refuses installs under Rosetta (script now re-execs arm64, 452930b) and raw.githubusercontent cached the old master (pin commit hashes). |
 | 4 voices+.env | pending | |
 | 5 doctor+Chrome | pending | |
 | 6 podcast.yml | pending | |
@@ -74,7 +75,8 @@ Keep this in the log of the session. If any task leaves the Mac in a state we do
 launchctl unload ~/Library/LaunchAgents/podcast.chrome.plist 2>/dev/null; rm -f ~/Library/LaunchAgents/podcast.chrome.plist
 rm -rf ~/podcast
 sed -i '' '/browser-harness\/SKILL.md/d' ~/.claude/CLAUDE.md 2>/dev/null
-brew uninstall bash uv 2>/dev/null   # D3: the only two Task 3 installs
+brew uninstall bash uv 2>/dev/null && brew autoremove   # Task 3 installed bash uv (+ bash deps gettext json-c libunistring ncurses)
+rm -f ~/.local/bin/browser-harness; rm -rf ~/.local/share/uv/tools/browser-harness   # uv tool install
 ls ~/podcast ~/Library/LaunchAgents/podcast.chrome.plist 2>&1
 ```
 
@@ -389,4 +391,5 @@ arch          Apple M4, but the job runs as x86_64 -- the runner is the x64 buil
 - **D1 — `~/.claude` is the roommate's. Do not write to it.** Jobs set `CLAUDE_CONFIG_DIR=/Users/minigala/podcast/claude` (in `mac.yml` and `podcast.yml` env), so claude's memory file, settings and session transcripts all live under `~/podcast/`. `setup-mac.sh` writes its one import line to `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md`. (The three hello runs already left session files under the roommate's `~/.claude/projects/`; harmless, noted.) Ledger updated: the `~/.claude/CLAUDE.md` line is **out**, `~/podcast/claude/` is **in**.
 - **D2 — `gh` on the Mac is the roommate's login.** `podcast.yml` sets `GH_TOKEN`, which `gh` prefers over the keyring, so CI never acts as them. `mac.yml` dispatches must not call `gh` for anything but `gh auth status`.
 - **D3 — Task 3 will install exactly two brew formulae: `bash`, `uv`.** jq/node/python3 are already present (system or brew). Rollback card updated accordingly.
-- **D4 — Rosetta.** The runner is the x64 build on an M4; every job is an x86_64 process. Homebrew re-execs itself as arm64 (it already upgraded claude fine) and macOS execs arm64 binaries from x86 shells, so nothing to do. If a native tool ever misbehaves, the fix is re-registering the arm64 runner -- a human task, not ours.
+- **D4 — Rosetta.** The runner is the x64 build on an M4; every job is an x86_64 process. `brew install` **refuses** to run there (`rerun under ARM use: arch -arm64 brew install`) — casks upgraded fine earlier, formulae do not. `setup-mac.sh` now re-execs itself with `arch -arm64` (452930b). Task 6 runs `ci-podcast.sh` the same way. The real fix is re-registering the arm64 runner build — a human task, later.
+- **D5 — raw.githubusercontent.com caches `master` ~5 min.** Every dispatch that fetches a script pins the commit hash, never `master`.
