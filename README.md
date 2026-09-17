@@ -10,6 +10,9 @@ draft ──▶ rewrite for the ear ──▶ TTS render ──▶ critic ──
 Runs by hand, or unattended on a self-hosted GitHub Actions runner when a blog
 post is pushed.
 
+Why it exists, what it uses, how episodes are judged and what it has shipped so
+far: [`docs/00-overview.md`](docs/00-overview.md).
+
 ## Quick start
 
 ```bash
