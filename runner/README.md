@@ -78,6 +78,60 @@ Keep that Chrome alive across reboots with `~/Library/LaunchAgents/podcast.chrom
 (`KeepAlive`, args `--remote-debugging-port=9333 --user-data-dir=$HOME/podcast/chrome-profile`),
 then log into Spotify for Creators in it **once** — the profile persists.
 
+### The shared Mac, as actually set up (2026-09-17)
+
+`minigala-4` was set up entirely through GitHub Actions — no hands on the box.
+The full record with every run id is `runner/mac-plan.md`. What matters later:
+
+**Footprint** — everything the pipeline owns on that Mac, nothing else:
+
+```
+~/podcast/                      plugin clone (+ .env, voices/), browser-harness, chrome-profile, claude/ (CLAUDE_CONFIG_DIR)
+~/Library/LaunchAgents/podcast.chrome.plist   the :9333 Chrome, KeepAlive
+~/.local/bin/browser-harness    uv tool install (+ ~/.local/share/uv/tools/browser-harness)
+brew: bash, uv                  (and bash's deps gettext json-c libunistring ncurses); claude-code cask upgraded
+```
+
+The owner's `~/.claude`, `gh` login, system settings and runner install
+(`~/Documents/Mangala/actions-runner`) are untouched. The runner is the x64
+build under Rosetta, so the workflow runs `ci-podcast.sh` via `arch -arm64`.
+
+**Rollback** — one `mac.yml` dispatch removes all of it:
+
+```
+launchctl unload ~/Library/LaunchAgents/podcast.chrome.plist; rm -f ~/Library/LaunchAgents/podcast.chrome.plist
+rm -rf ~/podcast ~/.local/bin/browser-harness ~/.local/share/uv/tools/browser-harness
+brew uninstall bash uv && brew autoremove
+```
+
+**Remote shell** — `mac.yml` in the site repo (`workflow_dispatch`, input `cmd`,
+gated to one GitHub account). Every check below is a dispatch of it:
+
+```bash
+gh workflow run mac.yml -R truongnguyenptit/shipwithai.io --ref demo/podcast-auto -f cmd='<shell>'
+```
+
+**Two recurring chores**, both remote:
+
+1. *Claude token* (~yearly): on the PC `claude setup-token`, then
+   `gh secret set CLAUDE_CODE_OAUTH_TOKEN -R <site repo>`. A 401 in the
+   preflight is the symptom.
+2. *Spotify session* (weeks–months): the publish stage fails at Spotify, or
+   this dispatch says `NOT logged in`:
+   ```
+   BU_CDP_URL=http://127.0.0.1:9333 BU_NAME=podcast arch -arm64 browser-harness <<PY
+   new_tab("https://creators.spotify.com/home/show/<showId>"); wait_for_load()
+   u = page_info()["url"]; print("logged in" if u.startswith("https://creators.spotify.com/home/show/") else "NOT logged in -> " + u[:80])
+   PY
+   ```
+   Re-login without touching the Mac: log into Spotify in the PC's own :9333
+   Chrome (`systemctl --user start podcast-chrome`), export the `spotify.com`
+   cookies with browser-harness (`cdp("Network.getAllCookies")`) to a file,
+   `gh secret set SPOTIFY_COOKIES < file`, dispatch
+   `cdp("Storage.setCookies", cookies=...)` into the Mac's Chrome, then
+   **delete the secret and the file** — the cookies are the account, and every
+   repo writer can read a secret.
+
 ## Linux: the same dedicated Chrome
 
 Chrome 144+ shows "Allow remote debugging?" on every attach to a normal
