@@ -62,7 +62,7 @@
 | 4 voices+.env | done (deviation) | run 35111532786. User chose: clips committed to the public plugin repo (`voices/`, 9fd0e40) instead of scp; `.env` from repo secret `PODCAST_ENV` via `mac.yml` env. 4 clips present, .env 50 lines, voice paths resolve. |
 | 5 doctor+Chrome | done | doctor run 35111653853 all OK but Chrome; Chrome run 35183378174: `podcast.chrome` LaunchAgent loaded (pid 52717), CDP on :9333, doctor display OK. Spotify login done **remotely**: user logged in on the PC's 9333 Chrome, exported spotify.com cookies via CDP (`Network.getAllCookies`) → repo secret `SPOTIFY_COOKIES` → `mac.yml` env → dispatch `Storage.setCookies` into the Mac's 9333 Chrome (run 35189692676, 31 cookies). Verified read-only: show dashboard loads without login (run 35189862659). Relogin when expired = repeat export/import; no hands on the Mac. |
 | 6 podcast.yml | done | site commit "podcast job runs on the Mac"; preflight replay run 35183493067: bash 5.3.20, env ok, render server ok, ffmpeg, browser-harness, claude ok. Spotify: NOT logged in (Chrome on the Mac now shows the login page). |
-| 7 real post | ready | Spotify session live on the Mac; run Task 5 step 4 right before pushing to confirm `logged in`. |
+| 7 real post | running | login check `logged in`; touched `ai-coding-tool-pilot--founder--tip.md` (readingTime 3->4) on demo/podcast-auto; run 35191463031 on minigala-4, past preflight, started 06:48Z. |
 | 8 tidy | pending | |
 
 ---
