@@ -1,134 +1,250 @@
-# 00 — Overview: why, how, what we use, what comes out, how we judge it
+# 00 — How a blog post becomes a podcast episode with nobody watching
 
-> Read this first. `01-pipeline.md` is the command reference, `02-workflow-tutorial.md`
-> is the by-hand walkthrough, `runner/` is the CI machine. This is the design doc:
-> the reasoning behind all three, and the record of what it has actually done.
-
----
-
-## 1. Why this exists
-
-shipwithai.io publishes EN and VI blog posts about building with AI tools. Every
-post is a candidate for a spoken companion — not a read-aloud, a short
-conversation that carries the two or three ideas worth keeping, for people who
-listen while commuting or cooking and never open the page.
-
-Doing that by hand is ~1 hour per episode: rewrite for the ear, render, listen,
-fix, upload, paste the link back. Nobody keeps that up for two locales. So the
-goal is:
-
-**A pushed blog post becomes a published, embedded podcast episode with no human
-in the loop, at a quality bar an editor would sign off on — or it stops and says
-why.**
-
-The two halves matter equally. Unattended publishing to a public feed with no
-quality gate is worse than no podcast; a gate that needs a human to click is not
-unattended.
+> Read this first. Each heading is the question we had to answer; under it is
+> how we answered it — as a diagram where one says it better than prose.
+> `01-pipeline.md` is the command reference, `02-workflow-tutorial.md` the
+> by-hand walkthrough, `runner/` the CI machine.
 
 ---
 
-## 2. How it works
+## 1. Why are we doing this at all?
 
-### The chain
+**Problem.** shipwithai.io ships EN and VI posts about building with AI tools.
+Readers asked for audio. Making one episode by hand is ~1 hour — rewrite for
+the ear, render, listen, fix, upload, paste the link back — times two
+locales, per post. Nobody keeps that up.
 
-```
-site repo push (blog post changed)
-  │
-  ▼
-ci-podcast.sh  ── copies the post into drafts/<slug>--<locale>.md
-  │
-  ├─ [1] /content-podcast          rewrite for the ear → TTS render → Whisper QA
-  ├─ [2] /content-podcast-review   independent critic → score → ship | fix | regenerate
-  │        ▲                              │
-  │        └── fix: patch script, re-render ─┘   (up to 3 cycles)
-  │        └── regenerate: rewrite from scratch ─┘
-  ├─ [3] /content-podcast-posting  publish to Spotify for Creators (drives a real browser)
-  └─ [4] inject_podcast_frontmatter.py   write `podcast:` block into the post, commit [skip ci]
-  │
-  ▼
-site rebuilds → post shows the player under its header
+**Goal.** A pushed post becomes a published, embedded episode with no human in
+the loop, at a bar an editor would sign off on — **or it stops and says why**.
+
+```mermaid
+flowchart LR
+    A[Post pushed] --> B{Good enough?}
+    B -- yes --> C[Episode live,<br/>player in the post]
+    B -- no, 3 tries --> D[Job red, report attached,<br/>nothing published]
 ```
 
-### Stage by stage
-
-**[1] Render** (`skills/content-podcast/SKILL.md`). Claude reads the post and
-writes a *script*, not a transcript: at most three key points, one takeaway
-said three ways, every point anchored to a concrete example from the post.
-Dialogue mode (the default in CI) gives a host who owns the material and a
-co-host who pushes back and asks what a listener would ask. Everything is
-converted for the ear — no URLs, no code, numbers as words, English terms kept
-bare in VI. The script goes to the render server as JSON turns; the mp3 comes
-back; Whisper transcribes it and the transcript is diffed against the script
-(`overlapPct`) plus a tail check that the sign-off actually made it into the
-audio.
-
-**[2] Review** (`agents/podcast-critic.md`). A separate agent that has *not*
-seen the render conversation scores the script and the transcript against a
-fixed rubric (§5) and returns one of three verdicts. This is the only quality
-gate in CI. It is deliberately a different agent with a different prompt: the
-writer grading its own work found nothing wrong in every test we ran.
-
-**[3] Publish** (`skills/content-podcast-posting/`). Spotify for Creators has
-no upload API. The stage drives a logged-in Chrome through CDP
-(`browser-harness`): new episode → upload mp3 → title/description from the
-stub → Publish now. It searches the dashboard for a same-titled episode first
-so a retried run cannot create a duplicate. `--yes-publish` skips the human
-confirm; **only `ci-podcast.sh` passes it**, and only after a `ship` verdict.
-
-**[4] Inject**. The episode URL is written as a `podcast:` block into the
-post's frontmatter and committed to the same branch with `[skip ci]`. The
-site's `PodcastPlayer` component renders the Spotify embed when the block is
-present.
-
-### Unattended operation
-
-`scripts/ci-podcast.sh` is the whole CI. It diffs the push for changed posts
-under `src/content/blog/{en,vi}/`, skips any already carrying a `podcast:`
-block, caps the batch (`PODCAST_MAX_PER_PUSH=3`), runs a preflight (bash ≥ 4,
-`.env`, render server `/health`, ffmpeg, browser-harness, `claude -p ok`), then
-runs the chain per post. Every Claude call is `claude -p --model sonnet
---effort medium` — pinned, so the Mac and the PC produce the same episode for
-the same push.
-
-The workflow (`podcast.yml`, site repo) runs it on a **self-hosted Mac mini**
-(`runner/mac-plan.md` has the full setup record). Self-hosted is not a
-preference: the TTS server is on a private network, and publishing needs a
-browser with a live Spotify session. No cloud runner can supply either.
+Both halves matter: unattended publishing without a gate is worse than no
+podcast; a gate that needs a human click is not unattended.
 
 ---
 
-## 3. What we use
+## 2. What has to happen for a post to become an episode?
 
-| Layer | Choice | Why this one |
+Four stages, one script file threaded through all of them.
+
+```mermaid
+flowchart TD
+    P[(blog post .md)] --> S1
+    subgraph S1["1 · Render — /content-podcast"]
+        direction TB
+        W[Rewrite for the ear<br/>≤3 points, dialogue] --> J[(script .json)]
+        J --> T[TTS render<br/>OmniVoice cloned voices] --> M[(episode .mp3)]
+        M --> Q[Whisper QA<br/>overlap % + tail check] --> TR[(transcript .json)]
+    end
+    S1 --> S2
+    subgraph S2["2 · Review — /content-podcast-review"]
+        C[Independent critic<br/>35-pt rubric] --> V{verdict}
+    end
+    V -- fix / regenerate --> S1
+    V -- ship --> S3
+    subgraph S3["3 · Publish — /content-podcast-posting"]
+        B[Drive logged-in Chrome<br/>Spotify for Creators] --> U[(stub .podcast.json<br/>+ episode URL)]
+    end
+    S3 --> S4
+    subgraph S4["4 · Inject — inject_podcast_frontmatter.py"]
+        I[Write podcast: block<br/>commit with skip ci]
+    end
+    S4 --> SITE[Site rebuilds → player under the post header]
+```
+
+Why a rewrite and not a read-aloud: a post is written for a screen. Code,
+URLs, tables, "see below" mean nothing with your eyes closed. The script keeps
+the two or three ideas worth remembering and says them the way a person would.
+
+---
+
+## 3. How does one CI run actually play out?
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant GH as GitHub Actions
+    participant R as Mac mini runner
+    participant CI as ci-podcast.sh
+    participant CL as claude -p (sonnet)
+    participant TTS as Render server (LAN)
+    participant CR as Chrome :9333
+    participant SP as Spotify for Creators
+
+    GH->>R: push to watched branch touches blog/**.md
+    R->>CI: arch -arm64 bash ci-podcast.sh
+    CI->>CI: diff push → changed posts, drop ones with podcast:, cap at 3
+    CI->>CI: preflight (bash≥4, .env, /health, ffmpeg, browser-harness, claude ok)
+    loop each post, up to 3 cycles
+        CI->>CL: /content-podcast <draft> --mode dialogue
+        CL->>TTS: render turns
+        TTS-->>CL: mp3
+        CL->>TTS: transcribe
+        TTS-->>CL: transcript + overlapPct
+        CL-->>CI: script, mp3, transcript, stub
+        CI->>CL: /content-podcast-review <id>
+        CL-->>CI: verdict ship | fix | regenerate
+    end
+    CI->>CL: /content-podcast-posting <id> --yes-publish
+    CL->>CR: upload mp3, fill title/description, Publish
+    CR->>SP: new episode
+    SP-->>CL: episode URL
+    CI->>CI: inject podcast: block, commit [skip ci], push
+    CI-->>GH: green
+```
+
+Every `claude -p` is `--model sonnet --effort medium`, pinned — the Mac and
+the PC produce the same episode for the same push.
+
+---
+
+## 4. What happens when the critic says no?
+
+```mermaid
+stateDiagram-v2
+    [*] --> Render
+    Render --> Review
+    Review --> Publish : ship
+    Review --> Patch : fix (minor issues, or audio missing content)
+    Review --> Render : regenerate (faithfulness fail, or conversation ≤2/5)
+    Patch --> Render : re-render changed turns
+    Review --> Halt : 3rd cycle without ship
+    Publish --> Inject
+    Inject --> [*]
+    Halt --> [*] : job red, mp3 + report as artifact, nothing published
+```
+
+**Why three cycles, not two:** a `regenerate` followed by a `fix` is progress,
+and the `fix` has not had its own attempt yet (observed 2026-09-12, VI).
+
+**Why halt, not "ship the best attempt":** a bad or duplicate episode on a
+public feed can only be deleted by hand in the Spotify dashboard. A red job
+costs nothing, and a script that fails three independent reviews usually means
+the *post* has a problem.
+
+---
+
+## 5. What do we run it on, and why not the cloud?
+
+```mermaid
+flowchart LR
+    subgraph GH["GitHub"]
+        SITE[site repo<br/>podcast.yml · mac.yml]
+        PLUG[plugin repo<br/>this one]
+        SEC[secrets<br/>CLAUDE_CODE_OAUTH_TOKEN · PODCAST_ENV]
+    end
+    subgraph MAC["Mac mini · minigala-4 (shared, roommate's)"]
+        RUN[Actions runner<br/>LaunchAgent, GUI session]
+        CLONE[~/podcast/plugin<br/>+ .env + voices/]
+        CHR[Chrome :9333<br/>dedicated profile, KeepAlive]
+        CC[claude<br/>CLAUDE_CONFIG_DIR=~/podcast/claude]
+    end
+    subgraph LAN["Private network"]
+        TTS[Render server<br/>OmniVoice · Kokoro · Whisper]
+    end
+    SPOT[Spotify for Creators]
+
+    SITE -- job --> RUN
+    SEC -- env --> RUN
+    PLUG -- git pull each run --> CLONE
+    RUN --> CLONE --> CC
+    CC --> TTS
+    CC --> CHR --> SPOT
+```
+
+Three inputs a cloud runner cannot have:
+
+| Need | Why cloud can't | What we did |
 |---|---|---|
-| Orchestration | Claude Code plugin (`commands/`, `skills/`, `agents/`), run as `claude -p` | The stages are judgment work (rewrite, critique, drive a UI), not scripts. Pinned `sonnet`/`medium`: verified 35/35 on it; Opus adds cost, not score. |
-| Script → speech | Remote render server on a Mac: **OmniVoice** (voice cloning, EN + VI, the main path), **Kokoro** (EN preset fallback), Chatterbox / VieNeu (available, unused) | VI has no usable preset voice; cloning from 4 reference clips (`voices/`) is the only way the show sounds like the show in both languages. |
-| Audio QA | **faster-whisper** on the same server; `overlapPct` script-vs-transcript + tail-coverage check | Cheap, deterministic, catches dropped turns and garbled identifiers before the expensive critic runs. |
-| Quality gate | `podcast-critic` agent, 35-point rubric, YAML report | Independent grader; hard-fails on any invented claim. |
-| Publishing | Spotify for Creators via **browser-harness** (CDP into a dedicated Chrome on `:9333`) | No API exists. A dedicated Chrome with its own profile keeps the session out of anyone's daily browser and avoids the "allow remote debugging?" prompt. Cloudflare R2 is the alternate backend (`--backend r2`) for self-hosting the mp3. |
-| CI | GitHub Actions, self-hosted runner on a shared Mac mini, LaunchAgent (GUI session) | Needs LAN + GUI browser. Everything the pipeline owns lives under `~/podcast/` plus one LaunchAgent, removable with one command. |
-| Secrets | Repo secrets: `CLAUDE_CODE_OAUTH_TOKEN`, `PODCAST_ENV` (the whole `.env`) | Nothing secret sits on the runner's disk except what the job writes at start. |
-| Site side | Astro; `podcast` schema in `content.config.ts`; `PodcastPlayer.astro` | Player is opt-in per post — no block, no player. |
+| TTS server | on a private LAN | self-hosted runner on the same network |
+| Logged-in Spotify browser | no publishing API exists | dedicated Chrome with a debug port, session moved in by cookie hand-over |
+| Voice clips + `.env` | not in a public repo | clips committed (no secrets in them), `.env` written from one secret at job start |
 
-Not used, on purpose: no queue, no database, no dashboard. The durable record
-of an episode is the `podcast:` block in the post. If the post has one, the
-episode exists; if not, it doesn't.
+**The Mac is a roommate's.** Constraint: no hands on the box, nothing outside
+one directory, one-line rollback. Everything was done through `mac.yml`
+(a `workflow_dispatch` remote shell). Footprint: `~/podcast/`, one
+LaunchAgent, three brew formulae. `runner/mac-plan.md` is the full record.
 
 ---
 
-## 4. What comes out
+## 6. How did we get a logged-in Spotify on a machine nobody can touch?
 
-Per episode, on the runner (`podcasts/`, `podcast-reports/` — gitignored):
+Nobody types a password, ever. The session moves as cookies, through a
+secret that lives for one hour.
 
-| File | What |
-|---|---|
-| `<slug>--<locale>.json` | the script: `host_mode`, turns `{voice, line}` |
-| `<slug>--<locale>.mp3` | the episode (≈1.3 MB / 5 min VI dialogue) |
-| `<slug>--<locale>.transcript.json` | Whisper output: `text`, timed `segments`, `overlapPct` |
-| `<slug>--<locale>.podcast.json` | metadata stub: title, locale, engine, `qaOverlapPct`, then the Spotify URL/embed/episodeId once published |
-| `podcast-reports/<slug>--<locale>.md` + `.critic.yaml` | the critic's scored report, per-cycle |
+```mermaid
+sequenceDiagram
+    participant U as Owner (PC)
+    participant PC as PC Chrome :9333
+    participant GHS as GitHub secret
+    participant MC as Mac Chrome :9333
+    U->>PC: log into Spotify for Creators by hand
+    U->>PC: browser-harness cdp Network.getAllCookies → file
+    U->>GHS: gh secret set SPOTIFY_COOKIES < file
+    U->>MC: mac.yml dispatch: cdp Storage.setCookies
+    MC-->>U: dashboard loads → "logged in"
+    U->>GHS: delete secret
+    U->>PC: delete file
+```
 
-In the site repo, the one thing that lasts:
+Kill switch: Spotify → "Sign out everywhere". Accepted risk: any repo writer
+can read a repo secret by pushing a workflow — see §10.
+
+---
+
+## 7. What does an episode leave behind?
+
+```mermaid
+classDiagram
+    class Script {
+        podcasts/slug--locale.json
+        host_mode: dialogue
+        turns: [voice, line]
+    }
+    class Episode {
+        podcasts/slug--locale.mp3
+        ~1.3 MB per 5 min
+    }
+    class Transcript {
+        podcasts/slug--locale.transcript.json
+        text
+        segments[start,end,text]
+        overlapPct
+    }
+    class Stub {
+        podcasts/slug--locale.podcast.json
+        episodeTitle · locale · engine
+        qaOverlapPct
+        type · url · embedUrl · episodeId
+    }
+    class Report {
+        podcast-reports/slug--locale.md
+        podcast-reports/slug--locale.critic.yaml
+        score · verdict · blockers/majors/minors
+    }
+    class PodcastBlock {
+        site: src/content/blog/locale/slug.md
+        podcast.type · url · embedUrl · episodeId
+    }
+    Script --> Episode : render
+    Episode --> Transcript : whisper
+    Script --> Transcript : diff → overlapPct
+    Script --> Stub
+    Transcript --> Report : critic
+    Script --> Report : critic
+    Stub --> PodcastBlock : inject
+```
+
+Only `PodcastBlock` is committed. Everything under `podcasts/` and
+`podcast-reports/` is gitignored — the durable record of an episode is the
+block in the post. No queue, no database: if the post has the block, the
+episode exists.
 
 ```yaml
 podcast:
@@ -138,140 +254,147 @@ podcast:
   episodeId: '4xkWvFqmxLIj6gOUAjkxhK'
 ```
 
-What a reader sees: a Spotify player under the post header. What a listener
-gets: a 4–6 minute two-voice conversation that stands alone without the page.
+---
 
-When a run **halts** (3 cycles, no `ship`): job goes red, nothing is
-published, the mp3 and the critic reports are attached to the run as an
-artifact for 7 days. A human reads the report and either fixes the post or
-runs the stage by hand.
+## 8. How do we know an episode is good enough?
+
+An agent that never saw the render conversation scores script + transcript
+against a fixed rubric. The writer grading its own work found nothing wrong
+in every test — hence a separate grader.
+
+```mermaid
+pie showData title Rubric — 35 points (dialogue)
+    "Faithfulness (hard fail)" : 8
+    "Value" : 6
+    "Eyes-free sayability" : 6
+    "Conversationality" : 5
+    "Memorability" : 5
+    "Standalone" : 3
+    "Render integrity" : 2
+```
+
+| Verdict | Condition |
+|---|---|
+| `ship` | ≥ 28/35 · faithfulness clean · overlap ≥ 85 % (or judged a Whisper artifact) · conversationality ≥ 4/5 |
+| `fix` | ≥ 26/35 · faithfulness 8/8 — patch the named turns, re-render. Also whenever audio is missing something the script has |
+| `regenerate` | anything else, and **always** on an invented claim or conversationality ≤ 2/5 |
+
+Minors never block. Majors that block are what a listener would hear: missing
+audio, garbled TTS, a claim the post never made. Two checks run *before* the
+critic so it doesn't waste a cycle on them: Whisper overlap and a tail check
+that the sign-off made it into the audio.
 
 ---
 
-## 5. How we judge it
+## 9. How good has it actually been?
 
-### The rubric (dialogue = 35, single narrator = 30)
-
-| Dimension | Pts | What loses points |
-|---|---|---|
-| Faithfulness | 8 | any claim not in the post — **hard fail, always `regenerate`** |
-| Value | 6 | padding, boilerplate, survey-of-everything, missing the actual point |
-| Eyes-free sayability | 6 | raw identifiers, URLs, digits, code, anything that only works on a page |
-| Standalone | 3 | "as shown below", "copy it from the post" with the thing never said aloud |
-| Memorability | 5 | > 3 key points, no repeated takeaway, no concrete anchor, no recap |
-| Conversationality (dialogue) | 5 | turns that don't react to the previous turn, unanswered questions, filler; ≤ 2/5 caps at `regenerate` |
-| Render integrity | 2 | `overlapPct` < 85% with a real defect, skipped turn, garbled sentence |
-
-### Verdicts
-
-- **`ship`** — ≥ 28/35, faithfulness clean, overlap ≥ 85% (or judged a
-  Whisper artifact), conversationality ≥ 4/5.
-- **`fix`** — ≥ 26/35, faithfulness 8/8: patch the named turns and re-render.
-  Also whenever the audio is missing something the script has.
-- **`regenerate`** — anything else: rewrite from the post.
-
-Minors never block. Majors that block are the ones a listener would hear:
-missing audio, garbled TTS, a claim the post never made.
-
-### Loop policy
-
-Three render→review cycles, then halt. Three, not two: a `regenerate` followed
-by a `fix` is progress and the `fix` deserves its own attempt. Three, not
-more: a script that fails three independent reviews has a problem in the post,
-and a human should look. We chose **halt** over "ship the best attempt" because
-a duplicate or bad episode on a public feed can only be deleted by hand in the
-Spotify dashboard; a red job costs nothing.
-
-### What it has actually done
-
-| Date | Locale / mode | Where | Cycles | Score | Time | Notes |
+| Date | Locale | Where | Cycles | Score | Wall time | Cycle-1 finding |
 |---|---|---|---|---|---|---|
-| 2026-09-12 | VI dialogue | PC | 2 | 34/35 | — | first VI; only the audio tail needed re-rendering — this is why cycles went 2 → 3 |
-| 2026-09-17 | EN dialogue | Mac mini, unattended | 2 | 31 → **35/35** | ~50 min | c1 `fix`: sign-off missing from the audio. Published, injected, no re-trigger. |
-| 2026-09-17 | VI dialogue | Mac mini, unattended | 2 | 30 → **33/35** | 26 min | c1 `fix`: "copy the template from the post" (standalone), 4 non-reactive turns. Lost 2 pts on sayability: `npm package` mangled, "Claude" pronounced "Cloud". |
+| 2026-09-12 | VI | PC | 2 | 34/35 | — | audio tail dropped (why cycles went 2→3) |
+| 2026-09-17 | EN | Mac, unattended | 2 | 31 → **35/35** | ~50 min | sign-off missing from audio |
+| 2026-09-17 | VI | Mac, unattended | 2 | 30 → **33/35** | 26 min | "copy the template from the post" (standalone), 4 non-reactive turns |
 
-Where the time goes (VI run): render 8 min, review 6.5, re-render 3.5,
-re-review 3.5, publish 4. TTS and the critic's re-listen dominate; the model is
-not the bottleneck. The lever is **avoiding cycle 2**: both cycle-1 failures
-were the same two recurring findings, which are now rules and a check in the
-render skill (commit `9f88dfe`).
+Where the 26 minutes went:
 
-Known quality ceilings, in priority order:
+```mermaid
+gantt
+    title VI run 35200104702 — 2026-09-17
+    dateFormat HH:mm
+    axisFormat %H:%M
+    section cycle 1
+    render          :08:31, 8m
+    review → fix    :08:39, 7m
+    section cycle 2
+    patch + render  :08:46, 3m
+    review → ship   :08:49, 4m
+    section publish
+    Spotify UI      :08:53, 4m
+    inject + push   :08:57, 1m
+```
 
-1. **VI voice mispronounces "Claude"** (→ "Cloud"). A voice artifact, not a
-   script defect, so the critic never blocks on it — it will sound like that
-   on every VI episode until the script spells it for the ear. Fix is a
-   VI rule with a phonetic spelling, chosen by a short listen test.
-2. Bare English identifiers in VI (`npm`) get garbled — same fix.
-3. EN Kokoro fallback clips the tail of hyphenated compounds; irrelevant while
-   OmniVoice is configured.
+TTS and the critic's re-listen dominate; the model is not the bottleneck.
+The lever is **not needing cycle 2**. Both cycle-1 failures were the same two
+recurring findings; they are now rules and a check in the render skill
+(`9f88dfe`).
 
----
+**Known ceilings** — things the critic will never block on, so they persist
+until fixed:
 
-## 6. Decisions and why
-
-- **Never auto-publish, except CI after `ship`.** `/content-podcast-all` stops
-  at the confirm by design; CI calls the three stages separately so it can
-  pass `--yes-publish` with the critic as the only gate. The flag is dangerous
-  enough that it lives in exactly one call site.
-- **Two loop guards.** The inject commit lands on the branch the workflow
-  watches. `[skip ci]` *and* "skip any post that already has `podcast:`" —
-  `[skip ci]` alone is one careless edit away from a publish storm.
-- **Verify artifacts, not exit codes.** `claude -p` ends the session the
-  instant the agent returns; twice the render stage backgrounded the job and
-  returned 0 with no mp3. Every stage checks the file exists.
-- **Model pinned.** Without `--model`/`--effort`, `claude -p` inherits whatever
-  the runner's `~/.claude/settings.json` says — a different episode per
-  machine for the same push.
-- **The shared Mac.** It is a roommate's computer. Everything was done through
-  Actions (no hands on the box), the footprint is one directory plus one
-  LaunchAgent, and there is a one-line rollback. Claude's config is isolated
-  (`CLAUDE_CONFIG_DIR`), the owner's `~/.claude`, `gh` login and system
-  settings are untouched.
-- **Spotify session by cookie hand-over, not password.** Nobody types a
-  password anywhere. Cookies were exported from a logged-in PC Chrome, moved
-  through a repo secret, imported into the Mac's dedicated Chrome, and the
-  secret and file deleted the same hour. "Sign out everywhere" in Spotify is
-  the kill switch.
-- **Known risk, accepted for now:** any repo writer can read repo secrets by
-  pushing a workflow. Mitigation is a GitHub environment with required
-  reviewers (§7).
+1. VI voice says "Claude" as "Cloud", every time. Voice artifact; fix is a
+   phonetic spelling rule in the VI script, picked by a listen test.
+2. Bare identifiers in VI (`npm`) get garbled — same fix.
+3. EN Kokoro fallback clips hyphenated compounds — moot while OmniVoice is
+   configured.
 
 ---
 
-## 7. What's next
+## 10. Why is it shaped this way?
 
-In order:
+**Why does `/content-podcast-all` refuse to auto-publish, but CI does?**
+`--yes-publish` publishes irreversibly. It has exactly one call site,
+`ci-podcast.sh`, and only after `ship`. By hand you always get the confirm.
 
-1. **Merge the site PR** (player + schema + workflows) — trigger stays on
-   `demo/**`, so merging changes nothing until step 3.
-2. **Point the Mac at the production show** — today it is logged into the
-   tester show. Either a config change (same account) or one more cookie
-   hand-over (different account).
-3. **Widen the trigger** to the publishing branch. Only posts changed in the
-   push are processed, so there is no backlog storm; keep
-   `PODCAST_MAX_PER_PUSH` low for the first week.
-4. **Failure notification** — make sure a red podcast job reaches a person.
-5. **Restrict secrets** to a GitHub environment with required reviewers.
-6. **VI pronunciation rules** for "Claude" / `npm` (the quality item above).
-7. Cleanup: delete the demo branch and the tester episodes, decide the PC
-   runner's fate, re-register the Mac runner as arm64 (cosmetic).
+**Why two loop guards on the inject commit?**
+
+```mermaid
+flowchart LR
+    I[inject commit<br/>on the watched branch] --> G1{"[skip ci]?"}
+    G1 -- yes --> STOP1[no run]
+    G1 -- "no (someone edited the message)" --> RUN[run starts]
+    RUN --> G2{post already has<br/>podcast: block?}
+    G2 -- yes --> STOP2[SKIP, no publish]
+    G2 -- no --> STORM[would publish again]
+```
+
+`[skip ci]` alone is one careless edit from a publish storm.
+
+**Why check files instead of exit codes?** `claude -p` ends the session the
+instant the agent returns. Twice the render stage backgrounded the job and
+returned 0 with no mp3. Every stage checks the artifact exists.
+
+**Why pin the model?** Without `--model`/`--effort`, `claude -p` inherits the
+runner's `~/.claude/settings.json` — a different episode per machine.
+
+**Why Sonnet and not Opus?** 35/35 on Sonnet; the time is in TTS and
+listening, not in the model. Opus adds cost, not score.
+
+**Why is the plugin pulled every run?** The Mac clone is a plain `git clone`;
+nothing else updates it. Without the pull, fixes to the skills never reach
+the runner.
+
+**What risk did we accept?** Any of the repo's writers can read repo secrets
+by pushing a workflow. Mitigation: move them to a GitHub *environment* with
+required reviewers. Not done yet.
+
+---
+
+## 11. What's next?
+
+```mermaid
+flowchart TD
+    A[1 · Merge site PR<br/>player + schema + workflows] --> B[2 · Point Mac Chrome<br/>at the production show]
+    B --> C[3 · Widen trigger<br/>demo/** → publishing branch]
+    C --> D[4 · Failure notification<br/>red job reaches a person]
+    D --> E[5 · Secrets → environment<br/>with required reviewers]
+    E --> F[6 · VI pronunciation rules<br/>Claude · npm]
+    F --> G[7 · Cleanup<br/>demo branch · tester episodes · PC runner · arm64 runner]
+```
 
 Not planned: a "ship anyway on cycle 3" mode. Revisit after the first real
-halt, not before.
+halt.
 
 ---
 
-## 8. Map
+## 12. Where is everything?
 
 ```
 commands/        the four slash commands (thin; they point at skills)
 skills/          the procedures: content-podcast (render), -review, -posting, -all
 agents/          podcast-critic — the independent grader and its rubric
-scripts/         ci-podcast.sh (CI entry), call_remote.py / call_local.py (render + transcribe),
-                 inject_podcast_frontmatter.py, runner-doctor.sh, setup-mac.sh, r2_upload.py
-runner/          README (runner install, both OSes), mac-plan.md (the Mac record), service units
-voices/          the four reference clips for cloning (EN host/co-host, VI host/co-host)
-docs/            this file, 01 command reference, 02 tutorial
+scripts/         ci-podcast.sh (CI entry) · call_remote.py / call_local.py (render, transcribe)
+                 inject_podcast_frontmatter.py · runner-doctor.sh · setup-mac.sh · r2_upload.py
+runner/          README (runner install, both OSes) · mac-plan.md (the Mac record) · service units
+voices/          the four reference clips for cloning (EN ×2, VI ×2)
+docs/            this file · 01 command reference · 02 tutorial
 drafts/ podcasts/ podcast-reports/   working dirs, gitignored
 ```
