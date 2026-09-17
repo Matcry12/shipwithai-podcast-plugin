@@ -20,7 +20,7 @@
   - Homebrew packages: `bash`, `uv` (D3; + whatever is already there: `ffmpeg`, `gh`, `claude-code`, Google Chrome). Shared with the roommate; each is `brew uninstall`-able. **Never `brew upgrade` blanket; only named packages.**
   - ~~One line in `~/.claude/CLAUDE.md`~~ -> D1: claude config lives in `~/podcast/claude/` via `CLAUDE_CONFIG_DIR`; the roommate's `~/.claude` is never written.
   - Already touched before this plan: `brew upgrade --cask claude-code` (2.1.118 → 2.1.267) on 2026-09-16.
-- **Not by a job, ever:** `sudo pmset`, `gh auth login`, Spotify login, changing runner labels, restarting the runner, `--yes-publish` outside `ci-podcast.sh`.
+- **Not by a job, ever:** `sudo pmset`, `gh auth login`, typing a Spotify password, changing runner labels, restarting the runner, `--yes-publish` outside `ci-podcast.sh`. (Spotify *session* hand-over via cookies is fine -- see Task 5.)
 - **Secrets never land on the Mac's disk** except `~/podcast/plugin/.env` (already gitignored, copied by the human over SSH). The Claude token stays a GitHub secret.
 - **Every dispatch is idempotent** — safe to re-run after a failure.
 - Site repo: `truongnguyenptit/shipwithai.io`, branch `demo/podcast-auto`. Plugin repo: `Matcry12/shipwithai-podcast-plugin`, `master`.
@@ -60,9 +60,9 @@
 | 2 recon | done | run 35107100696, see *Recon result*. Decisions: D1–D4 below. |
 | 3 tools+clones | done | run 35108150281 `setup exit=0`. brew: bash 5.3.20, uv (+deps gettext json-c libunistring ncurses). `~/podcast/{plugin,browser-harness,runner,claude}`. `~/.local/bin/browser-harness`. Roommate `~/.claude/CLAUDE.md` untouched (grep -c = 0). Two failed attempts first: brew refuses installs under Rosetta (script now re-execs arm64, 452930b) and raw.githubusercontent cached the old master (pin commit hashes). |
 | 4 voices+.env | done (deviation) | run 35111532786. User chose: clips committed to the public plugin repo (`voices/`, 9fd0e40) instead of scp; `.env` from repo secret `PODCAST_ENV` via `mac.yml` env. 4 clips present, .env 50 lines, voice paths resolve. |
-| 5 doctor+Chrome | done except Spotify login | doctor run 35111653853 all OK but Chrome; Chrome run 35183378174: `podcast.chrome` LaunchAgent loaded (pid 52717), CDP on :9333, doctor display OK. **Spotify login in that window still pending (human, any time before Task 7).** Login-state check (read-only, via CDP) added to Task 5 step 4. |
+| 5 doctor+Chrome | done | doctor run 35111653853 all OK but Chrome; Chrome run 35183378174: `podcast.chrome` LaunchAgent loaded (pid 52717), CDP on :9333, doctor display OK. Spotify login done **remotely**: user logged in on the PC's 9333 Chrome, exported spotify.com cookies via CDP (`Network.getAllCookies`) → repo secret `SPOTIFY_COOKIES` → `mac.yml` env → dispatch `Storage.setCookies` into the Mac's 9333 Chrome (run 35189692676, 31 cookies). Verified read-only: show dashboard loads without login (run 35189862659). Relogin when expired = repeat export/import; no hands on the Mac. |
 | 6 podcast.yml | done | site commit "podcast job runs on the Mac"; preflight replay run 35183493067: bash 5.3.20, env ok, render server ok, ffmpeg, browser-harness, claude ok. Spotify: NOT logged in (Chrome on the Mac now shows the login page). |
-| 7 real post | blocked | waits for the Spotify login in the 9333 Chrome; re-run Task 5 step 4 to confirm `logged in` first. |
+| 7 real post | ready | Spotify session live on the Mac; run Task 5 step 4 right before pushing to confirm `logged in`. |
 | 8 tidy | pending | |
 
 ---
@@ -286,8 +286,8 @@ Expected: `"Browser": "Chrome/…"` JSON — the debugging port answers. A Chrom
 ```bash
 gh workflow run mac.yml -R truongnguyenptit/shipwithai.io --ref demo/podcast-auto -f cmd='
 BU_CDP_URL=http://127.0.0.1:9333 BU_NAME=podcast arch -arm64 browser-harness <<"PY"
-new_tab("https://creators.spotify.com/pod/dashboard/home"); wait_for_load()
-u = page_info()["url"]; print("logged in" if "/pod/" in u and "login" not in u else "NOT logged in ->", u)
+new_tab("https://creators.spotify.com/home/show/033Ai5I5y5SitBUozkAhbB"); wait_for_load()
+u = page_info()["url"]; print("logged in" if u.startswith("https://creators.spotify.com/home/show/") else "NOT logged in ->", u)
 PY'
 maclog
 ```
