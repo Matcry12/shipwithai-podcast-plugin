@@ -9,10 +9,29 @@
 
 ## 1. Why are we doing this at all?
 
-**Problem.** shipwithai.io ships EN and VI posts about building with AI tools.
-Readers asked for audio. Making one episode by hand is ~1 hour — rewrite for
-the ear, render, listen, fix, upload, paste the link back — times two
-locales, per post. Nobody keeps that up.
+**Problem.** A blog post needs your eyes and ten quiet minutes. Most of the
+day is not like that — the bus, the walk, the kitchen, the gym. That time is
+when people actually have room for an idea, and a post can't reach them there.
+An episode can: press play, keep your hands and eyes free, arrive with the
+two or three things worth remembering.
+
+```mermaid
+flowchart LR
+    subgraph EYES["needs eyes + a quiet 10 min"]
+        POST[blog post]
+    end
+    subgraph EARS["needs ears only"]
+        EP[episode]
+    end
+    POST -. same ideas, said out loud .-> EP
+    EP --> BUS[on the bus]
+    EP --> WALK[walking]
+    EP --> COOK[cooking]
+```
+
+**Why it didn't just happen.** Making one episode by hand is ~1 hour —
+rewrite for the ear, render, listen, fix, upload, paste the link back — times
+two locales, per post. Nobody keeps that up, so the posts stayed text-only.
 
 **Goal.** A pushed post becomes a published, embedded episode with no human in
 the loop, at a bar an editor would sign off on — **or it stops and says why**.
