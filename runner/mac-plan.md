@@ -60,7 +60,7 @@
 | 2 recon | done | run 35107100696, see *Recon result*. Decisions: D1–D4 below. |
 | 3 tools+clones | done | run 35108150281 `setup exit=0`. brew: bash 5.3.20, uv (+deps gettext json-c libunistring ncurses). `~/podcast/{plugin,browser-harness,runner,claude}`. `~/.local/bin/browser-harness`. Roommate `~/.claude/CLAUDE.md` untouched (grep -c = 0). Two failed attempts first: brew refuses installs under Rosetta (script now re-execs arm64, 452930b) and raw.githubusercontent cached the old master (pin commit hashes). |
 | 4 voices+.env | done (deviation) | run 35111532786. User chose: clips committed to the public plugin repo (`voices/`, 9fd0e40) instead of scp; `.env` from repo secret `PODCAST_ENV` via `mac.yml` env. 4 clips present, .env 50 lines, voice paths resolve. |
-| 5 doctor+Chrome | step 1 done, waiting for human | run 35111653853: all OK except `display FAIL no Chrome on :9333` (expected). Render server reachable from the Mac LAN. `.env` chmod 600. Chrome dispatch waits for someone at the Mac. |
+| 5 doctor+Chrome | done except Spotify login | doctor run 35111653853 all OK but Chrome; Chrome run 35183378174: `podcast.chrome` LaunchAgent loaded (pid 52717), CDP on :9333, doctor display OK. **Spotify login in that window still pending (human, any time before Task 7).** Login-state check (read-only, via CDP) added to Task 5 step 4. |
 | 6 podcast.yml | pending | |
 | 7 real post | pending | |
 | 8 tidy | pending | |
@@ -281,15 +281,18 @@ Expected: `"Browser": "Chrome/…"` JSON — the debugging port answers. A Chrom
 
 - [ ] **Step 3 (human, at the Mac):** in *that* window (blank page, port 9333) log into Spotify for Creators. Type nothing anywhere else. Also, once: `sudo pmset -a sleep 0 disksleep 0 displaysleep 10`.
 
-- [ ] **Step 4: verify login from a job — no credentials involved, just "is the session there"**
+- [ ] **Step 4: verify login from a job — no credentials involved, just "is the session there"** (the doctor only checks that CDP answers, not that Spotify is logged in):
 
 ```bash
 gh workflow run mac.yml -R truongnguyenptit/shipwithai.io --ref demo/podcast-auto -f cmd='
-cd ~/podcast/plugin && BU_CDP_URL=http://127.0.0.1:9333 bash scripts/runner-doctor.sh; echo "doctor exit=$?"'
+BU_CDP_URL=http://127.0.0.1:9333 BU_NAME=podcast arch -arm64 browser-harness <<"PY"
+new_tab("https://creators.spotify.com/pod/dashboard/home"); wait_for_load()
+u = page_info()["url"]; print("logged in" if "/pod/" in u and "login" not in u else "NOT logged in ->", u)
+PY'
 maclog
 ```
 
-Expected: `doctor exit=0`.
+Expected: `logged in`. `NOT logged in -> https://accounts.spotify.com/...` means the human step is still pending.
 
 ---
 
