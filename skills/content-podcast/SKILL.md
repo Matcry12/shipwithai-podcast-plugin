@@ -232,9 +232,13 @@ developed thought (mix longer breathing turns that build a point with short ones
   script.
 - **Images / diagrams / tables** → convey the takeaway in words, or skip; never
   say "as shown below" or "see the diagram".
-- **Signpost once** — at least once, point to the article for the copy-paste
-  detail ("the full config's in the post if you want to lift it"). Audio =
-  understanding; page = detail.
+- **Signpost once, never substitute** — at least once, point to the article for
+  the copy-paste detail ("the full config's in the post if you want to lift
+  it"). Audio = understanding; page = detail. But the pointer is an *extra*: the
+  spoken line still delivers the takeaway itself. "Copy the template from the
+  post" with the template never described is a standalone **major** in review
+  (observed 2026-09-17, VI run, cost a full cycle) — say the three section
+  names, then point.
 
 ---
 
@@ -279,6 +283,10 @@ Before emitting, review your own draft against the article AND the bar above:
   made-up numbers, no invented outcomes).
 - **Standalone** — no "as shown below" / "the diagram" / bare-URL / "read this
   code" references that only make sense on the page.
+- **Conversationality (dialogue only)** — for every turn after the opening,
+  delete the previous turn and re-read: still reads fine? Then it is a
+  monologue chunk. Rewrite it to hook a phrase, question or claim from the
+  turn before. The critic runs exactly this test and majors on it.
 
 If any check fails, revise (bounded: at most 2 passes), then proceed. This is a
 self-review inside this one skill — by design, not a separate grader. The
@@ -475,6 +483,27 @@ Read `overlapPct` from the transcript JSON:
 - **< 85%** → report `QA: WARN (NN% overlap)` and list the mismatched segments.
   A low overlap is often a Whisper mistake (homophones, proper nouns), not a bad
   render — flag it for human review, do not silently fail.
+
+**Then check the tail — overlap does not.** Twice (VI 2026-09-12, EN
+2026-09-17) the render dropped the closing sign-off, the overlap still passed,
+and the independent critic majored on it a cycle later. Catch it here:
+
+```bash
+python3 - podcasts/<slug>--<locale>.json podcasts/<slug>--<locale>.transcript.json <<'EOF'
+import json, re, sys
+turns = json.load(open(sys.argv[1]))["turns"]
+segs  = json.load(open(sys.argv[2]))["segments"]
+words = lambda t: set(re.findall(r"\w+", t.lower()))
+tail  = words(" ".join(t["line"] for t in turns[-2:]))
+heard = words(" ".join(s["text"] for s in segs[-6:]))
+hit   = len(tail & heard) / max(len(tail), 1)
+print(f"TAIL: {'OK' if hit >= 0.5 else 'MISSING'} ({hit:.0%} of last two turns heard in last segments)")
+EOF
+```
+
+`TAIL: MISSING` is a render defect, not a QA flag: re-run the render for the
+episode (Step 7) and transcribe again before going on. Do not hand a truncated
+mp3 to Step 9.
 
 ---
 
