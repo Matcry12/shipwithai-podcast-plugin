@@ -136,6 +136,12 @@ if [ "${#todo[@]}" -gt "$MAX" ]; then
   failed=1
 fi
 
+# macOS ships no coreutils `timeout`, and an unbounded check is how a runner
+# spends an hour on nothing: 2026-09-22, `claude -p` hung in preflight and the
+# job sat 87 minutes with no output before someone cancelled it. perl's alarm
+# is on every box that has perl, which is every Mac.
+tmout() { perl -e 'alarm shift; exec @ARGV' "$@"; }
+
 echo "::group::preflight"
 # Remote render server (the tuned TTS engines), not local Kokoro. PODCAST_URL
 # points at a LAN address, so this runner must be on the same network as the
@@ -148,8 +154,13 @@ curl -fsS --max-time 10 -H "Authorization: Bearer $PODCAST_TOKEN" "$PODCAST_URL/
   || { echo "render server unreachable at $PODCAST_URL -- is the render host awake?"; exit 1; }
 command -v ffmpeg >/dev/null || { echo "ffmpeg MISSING"; exit 1; }
 command -v browser-harness >/dev/null || { echo "browser-harness not on PATH"; exit 1; }
-claude -p "reply with the single word: ok" >/dev/null 2>&1 \
-  || { echo "claude not authenticated on this runner"; exit 1; }
+# Named checks, not one silent block: when this stalls the last line printed
+# says which dependency is not answering.
+echo "- render server: ok"
+echo "- ffmpeg, browser-harness: ok"
+echo "- claude (60s limit) ..."
+tmout 60 claude -p "reply with the single word: ok" >/dev/null 2>&1 \
+  || { echo "claude did not answer in 60s, or is not authenticated on this runner"; exit 1; }
 echo "ok"
 echo "::endgroup::"
 
