@@ -21,6 +21,11 @@ SITE="${SITE_REPO:-$HOME/Developer/shipwithai.io}"
 fails=0
 warns=0
 
+# Every external call here gets a cap. 2026-09-24 the unbounded claude check
+# below sat 87 minutes inside a CI job and printed nothing -- a doctor that can
+# hang is worse than no doctor. macOS has no coreutils timeout; perl has alarm.
+tmout() { perl -e 'alarm shift; exec @ARGV' "$@"; }
+
 ok()   { printf '  \033[32mOK\033[0m    %s\n' "$1"; }
 bad()  { printf '  \033[31mFAIL\033[0m  %s\n         fix: %s\n' "$1" "$2"; fails=$((fails+1)); }
 warn() { printf '  \033[33mWARN\033[0m  %s\n         %s\n' "$1" "$2"; warns=$((warns+1)); }
@@ -37,10 +42,10 @@ command -v browser-harness >/dev/null \
 
 echo
 echo "== claude =="
-if claude -p "reply with the single word: ok" >/dev/null 2>&1; then
+if tmout 60 claude -p "reply with the single word: ok" >/dev/null 2>&1; then
   ok "authenticated"
 else
-  bad "claude is not authenticated" "run 'claude login' AS THE USER THE RUNNER SERVICE RUNS AS"
+  bad "claude did not answer in 60s, or is not authenticated" "token: gh secret set CLAUDE_CODE_OAUTH_TOKEN. A hang with a valid token: see the npm-build note in runner/README.md"
 fi
 
 echo
@@ -85,6 +90,21 @@ if [ "$(uname)" = Darwin ]; then
   curl -fsS --max-time 3 "$cdp/json/version" >/dev/null 2>&1 \
     && ok "Chrome answering CDP at $cdp" \
     || bad "no Chrome on $cdp" "open -a 'Google Chrome' --args --remote-debugging-port=9333 --user-data-dir=\$HOME/podcast/chrome-profile, log into Spotify in it once, set BU_CDP_URL in ~/actions-runner/.env"
+  # The cookies are the whole publishing credential and they expire on their
+  # own schedule. Without this the first sign of trouble is a failed publish
+  # in a real run, halfway through an episode nobody can finish.
+  if command -v browser-harness >/dev/null && curl -fsS --max-time 3 "$cdp/json/version" >/dev/null 2>&1; then
+    u="$(BU_CDP_URL="$cdp" BU_NAME="${BU_NAME:-podcast}" tmout 120 browser-harness <<'BH' 2>/dev/null
+new_tab("https://creators.spotify.com/home"); wait_for_load()
+print(page_info()["url"])
+BH
+)"
+    case "$u" in
+      *creators.spotify.com/home*) ok "spotify session live" ;;
+      "")   warn "spotify check did not return" "browser-harness timed out against $cdp -- re-run, then restart the Chrome LaunchAgent" ;;
+      *)    bad "spotify session expired (landed on ${u:0:60})" "re-login remotely: the cookie hand-over in runner/README.md" ;;
+    esac
+  fi
 elif [ -n "${DISPLAY:-}" ]; then
   ok "DISPLAY=$DISPLAY"
   [ -n "${XAUTHORITY:-}" ] && [ -f "${XAUTHORITY:-}" ] && ok "XAUTHORITY readable" \
