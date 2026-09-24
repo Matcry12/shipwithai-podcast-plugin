@@ -293,6 +293,7 @@ a missing sentence, a garbled word, a claim the post never made.
 | 12 Sep | Vietnamese | the PC | 2 | 34/35 | — | the closing line was cut off in the audio |
 | 17 Sep | English | the Mac, unattended | 2 | 31 → **35/35** | ~50 min | the closing line was cut off in the audio |
 | 17 Sep | Vietnamese | the Mac, unattended | 2 | 30 → **33/35** | 26 min | said "copy the template from the post" without saying what's in it; four lines that didn't respond to the line before |
+| 24 Sep | English | the Mac, unattended | **1** | **34/35** | 17 min | nothing — first run where the writer's new rules and the audio-tail check did their job, so no second try was needed |
 
 Where the 26 minutes went:
 
@@ -314,8 +315,9 @@ gantt
 
 Making the audio and the critic listening to it take the time; the AI's
 thinking does not. So the way to get faster is to **not need a second try**.
-Both first tries failed on the same two things, and those two things are now
-rules the writer follows and a check it runs before handing over.
+The first three runs all failed their first try on the same two things; those
+are now rules the writer follows and a check it runs before handing over, and
+the run after that shipped first try in 17 minutes.
 
 **Known weak spots** — the critic won't block on these, so they stay until
 fixed:

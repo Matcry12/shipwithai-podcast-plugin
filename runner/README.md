@@ -86,7 +86,8 @@ The full record with every run id is `runner/mac-plan.md`. What matters later:
 **Footprint** — everything the pipeline owns on that Mac, nothing else:
 
 ```
-~/podcast/                      plugin clone (+ .env, voices/), browser-harness, chrome-profile, claude/ (CLAUDE_CONFIG_DIR)
+~/podcast/                      plugin clone (+ .env, voices/), browser-harness, chrome-profile,
+                                claude/ (CLAUDE_CONFIG_DIR), cli/ (the claude CLI, npm build)
 ~/Library/LaunchAgents/podcast.chrome.plist   the :9333 Chrome, KeepAlive
 ~/.local/bin/browser-harness    uv tool install (+ ~/.local/share/uv/tools/browser-harness)
 brew: bash, uv                  (and bash's deps gettext json-c libunistring ncurses); claude-code cask upgraded
@@ -96,11 +97,28 @@ The owner's `~/.claude`, `gh` login, system settings and runner install
 (`~/Documents/Mangala/actions-runner`) are untouched. The runner is the x64
 build under Rosetta, so the workflow runs `ci-podcast.sh` via `arch -arm64`.
 
+**`claude` comes from npm, not the cask.** On 2026-09-24 the cask's single-file
+binary (2.1.267) hung at startup on this Mac: *every* invocation, `--help`
+included, parked before reaching its own code — no files opened, no stack to
+sample, 87 minutes on one job before anyone noticed. Ruled out: version,
+architecture (reinstalled native arm64), Gatekeeper/quarantine,
+`CLAUDE_CONFIG_DIR`, `HOME`, auto-update traffic, disk, DNS. The npm build of
+the same CLI answers in two seconds, so both workflows put it first on `PATH`:
+
+```bash
+npm install --prefix ~/podcast/cli @anthropic-ai/claude-code   # → ~/podcast/cli/node_modules/.bin/claude
+```
+
+Same command upgrades it. The cask is left installed but unused; if a later
+cask version starts working, drop the PATH entry in `podcast.yml` and
+`mac.yml`. Preflight now caps this check at 60s, so this failure mode is a red
+job in a minute, not a silent hour.
+
 **Rollback** — one `mac.yml` dispatch removes all of it:
 
 ```
 launchctl unload ~/Library/LaunchAgents/podcast.chrome.plist; rm -f ~/Library/LaunchAgents/podcast.chrome.plist
-rm -rf ~/podcast ~/.local/bin/browser-harness ~/.local/share/uv/tools/browser-harness
+rm -rf ~/podcast ~/.local/bin/browser-harness ~/.local/share/uv/tools/browser-harness   # ~/podcast/cli goes with it
 brew uninstall bash uv && brew autoremove
 ```
 
