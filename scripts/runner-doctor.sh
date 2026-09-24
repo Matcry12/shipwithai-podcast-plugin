@@ -95,14 +95,24 @@ if [ "$(uname)" = Darwin ]; then
   # in a real run, halfway through an episode nobody can finish.
   if command -v browser-harness >/dev/null && curl -fsS --max-time 3 "$cdp/json/version" >/dev/null 2>&1; then
     u="$(BU_CDP_URL="$cdp" BU_NAME="${BU_NAME:-podcast}" tmout 120 browser-harness <<'BH' 2>/dev/null
+import time
 new_tab("https://creators.spotify.com/home"); wait_for_load()
-print(page_info()["url"])
+# The dashboard lands on the bare host and then routes client-side, so the
+# first URL read says nothing. Logged out, it bounces to the login host.
+for _ in range(10):
+    u = page_info()["url"]
+    if "accounts.spotify.com" in u or "/login" in u or "/home" in u:
+        break
+    time.sleep(1)
+print(u)
 BH
 )"
     case "$u" in
-      *creators.spotify.com/home*) ok "spotify session live" ;;
+      *accounts.spotify.com*|*/login*)
+            bad "spotify session expired (bounced to ${u:0:50})" "re-login remotely: the cookie hand-over in runner/README.md" ;;
+      *creators.spotify.com*) ok "spotify session live" ;;
       "")   warn "spotify check did not return" "browser-harness timed out against $cdp -- re-run, then restart the Chrome LaunchAgent" ;;
-      *)    bad "spotify session expired (landed on ${u:0:60})" "re-login remotely: the cookie hand-over in runner/README.md" ;;
+      *)    warn "spotify check landed somewhere unexpected: ${u:0:60}" "look at the dashboard by hand before trusting the next publish" ;;
     esac
   fi
 elif [ -n "${DISPLAY:-}" ]; then
