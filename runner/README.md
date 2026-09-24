@@ -129,6 +129,17 @@ gated to one GitHub account). Every check below is a dispatch of it:
 gh workflow run mac.yml -R truongnguyenptit/shipwithai.io --ref demo/podcast-auto -f cmd='<shell>'
 ```
 
+**A daily heartbeat watches all of this.** `podcast-health.yml` (site repo)
+runs `runner-doctor.sh` on the Mac every morning — about thirty seconds, no
+rendering, no publishing — so a dependency that rotted overnight is a red tick
+rather than a post that quietly fails to become an episode. It has a second
+job on GitHub's own machines, because the Mac-side check cannot report that
+the Mac is gone: with no runner the job just queues, and silence looks exactly
+like health. That job fails when no health run has succeeded in 36 hours.
+
+The cron only fires from the repository's default branch, so it starts working
+when the workflow is merged there.
+
 **Two recurring chores**, both remote:
 
 1. *Claude token* (~yearly): on the PC `claude setup-token`, then
